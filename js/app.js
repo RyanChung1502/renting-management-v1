@@ -289,7 +289,7 @@ async function renderRoomList() {
                 </div>
                 <div class="room-info">
                     <span>${formatCurrency(room.price)}/tháng</span>
-                    ${room.deposit ? `<span>Cọc: ${formatCurrency(room.deposit)}</span>` : ''}
+                    <span>Tổng: ${room.lastBill ? Number(room.lastBill).toLocaleString('vi-VN') + 'đ' : '0đ'}</span>
                 </div>
                 ${tenantHTML}
                 ${status === 'occupied' ? `<button class="btn-bill" onclick="event.stopPropagation(); showBillForm('${room.id}')">Tính tiền</button>` : ''}
@@ -388,7 +388,7 @@ async function showBillForm(roomId) {
         </div>
     `);
 
-    $('#bill-form').addEventListener('submit', (e) => {
+    $('#bill-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const people = Number($('#f-bill-people').value) || 0;
         const kwh = Number($('#f-bill-kwh').value) || 0;
@@ -397,6 +397,11 @@ async function showBillForm(roomId) {
         const waterCost = people * waterPrice;
         const electricCost = kwh * electricPrice;
         const total = roomCost + waterCost + electricCost;
+
+        // Save bill to room
+        room.lastBill = total;
+        room.lastBillMonth = `${billMonth.month}/${billMonth.year}`;
+        await db.saveRoom(room);
 
         const fmt = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
         $('#bill-room').textContent = fmt(roomCost);
