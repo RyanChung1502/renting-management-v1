@@ -412,6 +412,7 @@ async function showBillForm(roomId) {
         $('#bill-result').style.display = 'block';
 
         speak(`Tổng cộng ${fmt(total)}`, `Total ${fmt(total)}`);
+        renderPage();
     });
 }
 
