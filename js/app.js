@@ -367,9 +367,6 @@ async function showBillForm(roomId) {
     const waterPrice = await db.getSetting('waterPrice') || 0;
     const billMonth = getBillMonth();
 
-    const hasMeters = room.electricOld != null && room.electricNew != null;
-    const autoKwh = hasMeters ? Math.max(0, room.electricNew - room.electricOld) : '';
-
     openModal(`Tính tiền - ${room.name}`, `
         <p style="margin-bottom:12px;color:var(--text-secondary)">Tháng ${billMonth.month}/${billMonth.year}</p>
         <form id="bill-form">
@@ -385,10 +382,6 @@ async function showBillForm(roomId) {
                 <label>Số điện mới (kỳ này)</label>
                 <input type="number" id="f-bill-elec-new" value="${room.electricNew != null ? room.electricNew : ''}" placeholder="VD: 1356">
             </div>
-            <div class="form-group">
-                <label>Số kWh (tự tính hoặc nhập tay)</label>
-                <input type="number" id="f-bill-kwh" value="${autoKwh}" placeholder="VD: 120">
-            </div>
             <button type="submit" class="btn btn-primary">Tính</button>
         </form>
         <div id="bill-result" style="display:none;margin-top:16px">
@@ -402,45 +395,32 @@ async function showBillForm(roomId) {
         </div>
     `);
 
-    // Auto-calculate kWh when meter readings change
-    const recalcKwh = () => {
-        const oldVal = $('#f-bill-elec-old').value;
-        const newVal = $('#f-bill-elec-new').value;
-        if (oldVal !== '' && newVal !== '') {
-            const kwh = Math.max(0, Number(newVal) - Number(oldVal));
-            $('#f-bill-kwh').value = kwh;
-        }
-    };
-    $('#f-bill-elec-old').addEventListener('input', recalcKwh);
-    $('#f-bill-elec-new').addEventListener('input', recalcKwh);
-
     $('#bill-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const people = Number($('#f-bill-people').value) || 0;
-        const kwh = Number($('#f-bill-kwh').value) || 0;
         const elecOldVal = $('#f-bill-elec-old').value;
         const elecNewVal = $('#f-bill-elec-new').value;
+        const kwh = (elecOldVal !== '' && elecNewVal !== '')
+            ? Math.max(0, Number(elecNewVal) - Number(elecOldVal))
+            : 0;
 
         const roomCost = (room.price || 0) * 1000;
-        const waterCost = people * waterPrice;
+        const waterCost = people * waterPrice * 1000;
         const electricCost = kwh * electricPrice;
         const total = roomCost + waterCost + electricCost;
 
-        // Save bill + meter readings to room; roll new → old for next cycle
+        // Save bill + meter readings; roll new → old for next cycle
         room.lastBill = total;
         room.lastBillMonth = `${billMonth.month}/${billMonth.year}`;
         if (elecNewVal !== '') {
-            room.electricOld = Number(elecNewVal); // next month's old = this month's new
+            room.electricOld = Number(elecNewVal);
             room.electricNew = null;
-        }
-        if (elecOldVal !== '' && elecNewVal !== '') {
-            // keep electricOld for display until new reading entered
         }
         await db.saveRoom(room);
 
         const fmt = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
         $('#bill-room').textContent = fmt(roomCost);
-        $('#bill-water').textContent = fmt(waterCost) + ` (${people} người × ${fmt(waterPrice)})`;
+        $('#bill-water').textContent = fmt(waterCost) + ` (${people} người × ${fmt(waterPrice * 1000)})`;
         $('#bill-electric').textContent = fmt(electricCost) + ` (${kwh} kWh × ${fmt(electricPrice)})`;
         $('#bill-total').textContent = fmt(total);
         $('#bill-result').style.display = 'block';
@@ -753,8 +733,8 @@ async function renderSettingsPage() {
                     <input type="number" id="f-electric-price" value="${electricPrice}" placeholder="VD: 3500">
                 </div>
                 <div class="form-group">
-                    <label>Giá nước (đ/người)</label>
-                    <input type="number" id="f-water-price" value="${waterPrice}" placeholder="VD: 100000">
+                    <label>Giá nước (1000đ/người)</label>
+                    <input type="number" id="f-water-price" value="${waterPrice}" placeholder="VD: 100">
                 </div>
                 <button type="submit" class="btn btn-primary">Lưu cài đặt</button>
             </form>
