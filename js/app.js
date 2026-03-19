@@ -81,6 +81,21 @@ function setupEventListeners() {
         });
     });
 
+    // Refresh
+    $('#btn-refresh').addEventListener('click', async (e) => {
+        e.preventDefault();
+        closeMenu();
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        }
+        if (navigator.serviceWorker) {
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (reg) await reg.unregister();
+        }
+        location.reload(true);
+    });
+
     // FAB
     fab.addEventListener('click', () => {
         if (currentPage === 'rooms') {
