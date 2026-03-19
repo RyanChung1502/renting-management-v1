@@ -1,6 +1,6 @@
 // ===== IndexedDB Database Layer =====
 const DB_NAME = 'RentMgrDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 class Database {
     constructor() {
@@ -19,7 +19,11 @@ class Database {
                     const roomStore = db.createObjectStore('rooms', { keyPath: 'id' });
                     roomStore.createIndex('name', 'name', { unique: false });
                     roomStore.createIndex('status', 'status', { unique: false });
-                    roomStore.createIndex('floor', 'floor', { unique: false });
+                }
+
+                // Settings store
+                if (!db.objectStoreNames.contains('settings')) {
+                    db.createObjectStore('settings', { keyPath: 'key' });
                 }
 
                 // Tenants store
@@ -150,20 +154,36 @@ class Database {
         return this.delete('tenants', id);
     }
 
+    // ===== Settings Operations =====
+
+    async getSetting(key) {
+        const result = await this.getById('settings', key);
+        return result ? result.value : null;
+    }
+
+    async saveSetting(key, value) {
+        return this.put('settings', { key, value });
+    }
+
+    async getAllSettings() {
+        return this.getAll('settings');
+    }
+
     // ===== Backup / Restore =====
 
     async exportAll() {
         const rooms = await this.getAllRooms();
         const tenants = await this.getAllTenants();
+        const settings = await this.getAllSettings();
         return {
             version: DB_VERSION,
             exportedAt: new Date().toISOString(),
-            data: { rooms, tenants }
+            data: { rooms, tenants, settings }
         };
     }
 
     async importAll(backup) {
-        const { rooms, tenants } = backup.data;
+        const { rooms, tenants, settings } = backup.data;
 
         // Clear existing data
         const txRooms = this.db.transaction('rooms', 'readwrite');
@@ -174,12 +194,21 @@ class Database {
         txTenants.objectStore('tenants').clear();
         await new Promise((resolve) => { txTenants.oncomplete = resolve; });
 
+        const txSettings = this.db.transaction('settings', 'readwrite');
+        txSettings.objectStore('settings').clear();
+        await new Promise((resolve) => { txSettings.oncomplete = resolve; });
+
         // Import new data
         for (const room of rooms) {
             await this.put('rooms', room);
         }
         for (const tenant of tenants) {
             await this.put('tenants', tenant);
+        }
+        if (settings) {
+            for (const setting of settings) {
+                await this.put('settings', setting);
+            }
         }
     }
 }

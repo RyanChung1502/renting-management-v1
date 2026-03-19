@@ -112,6 +112,11 @@ function renderPage() {
             fab.classList.remove('hidden');
             renderTenantList();
             break;
+        case 'settings':
+            pageTitle.textContent = 'Cài đặt';
+            fab.classList.add('hidden');
+            renderSettingsPage();
+            break;
         case 'backup':
             pageTitle.textContent = 'Sao lưu / Khôi phục';
             fab.classList.add('hidden');
@@ -123,7 +128,7 @@ function renderPage() {
 // ===== Format Helpers =====
 function formatCurrency(amount) {
     if (!amount) return '0đ';
-    return Number(amount).toLocaleString('vi-VN') + 'đ';
+    return Number(amount).toLocaleString('vi-VN') + '.000đ';
 }
 
 function formatDate(dateStr) {
@@ -159,7 +164,6 @@ async function renderRoomList() {
         filtered = rooms.filter(r => {
             const tenant = tenantMap[r.id];
             return r.name.toLowerCase().includes(searchQuery) ||
-                   (r.floor && r.floor.toString().includes(searchQuery)) ||
                    (tenant && tenant.name.toLowerCase().includes(searchQuery));
         });
     }
@@ -199,8 +203,8 @@ async function renderRoomList() {
                     <span class="room-status ${status}">${status === 'occupied' ? 'Đang thuê' : 'Trống'}</span>
                 </div>
                 <div class="room-info">
-                    ${room.floor ? `<span>Tầng ${room.floor}</span>` : ''}
                     <span>${formatCurrency(room.price)}/tháng</span>
+                    ${room.deposit ? `<span>Cọc: ${formatCurrency(room.deposit)}</span>` : ''}
                 </div>
                 ${tenantHTML}
             </div>`;
@@ -231,8 +235,8 @@ async function showRoomDetail(roomId) {
         <div class="detail-section">
             <h3>Thông tin phòng</h3>
             <div class="detail-row"><span class="label">Tên phòng</span><span class="value">${room.name}</span></div>
-            <div class="detail-row"><span class="label">Tầng</span><span class="value">${room.floor || '—'}</span></div>
             <div class="detail-row"><span class="label">Giá thuê</span><span class="value">${formatCurrency(room.price)}/tháng</span></div>
+            <div class="detail-row"><span class="label">Đặt cọc</span><span class="value">${formatCurrency(room.deposit)}</span></div>
             <div class="detail-row"><span class="label">Trạng thái</span><span class="value">${room.status === 'occupied' ? 'Đang thuê' : 'Trống'}</span></div>
         </div>
         <div class="detail-section">
@@ -250,9 +254,12 @@ async function showRoomDetail(roomId) {
 
 // ===== Room Form =====
 async function showRoomForm(roomId) {
-    let room = { name: '', floor: '', price: '', status: 'vacant' };
+    let room = { name: '', price: '', deposit: '', status: 'vacant' };
+    let existingTenant = null;
     if (roomId) {
         room = await db.getRoom(roomId) || room;
+        const tenants = await db.getTenantsByRoom(roomId);
+        existingTenant = tenants[0] || null;
     }
 
     openModal(roomId ? 'Sửa phòng' : 'Thêm phòng', `
@@ -262,19 +269,16 @@ async function showRoomForm(roomId) {
                 <input type="text" id="f-room-name" value="${room.name}" required placeholder="VD: Phòng 101">
             </div>
             <div class="form-group">
-                <label>Tầng</label>
-                <input type="number" id="f-room-floor" value="${room.floor || ''}" placeholder="VD: 1">
+                <label>Giá thuê (1000đ/tháng)</label>
+                <input type="number" id="f-room-price" value="${room.price || ''}" placeholder="VD: 3000">
             </div>
             <div class="form-group">
-                <label>Giá thuê (VNĐ/tháng)</label>
-                <input type="number" id="f-room-price" value="${room.price || ''}" placeholder="VD: 3000000">
+                <label>Tiền đặt cọc (1000đ)</label>
+                <input type="number" id="f-room-deposit" value="${room.deposit || ''}" placeholder="VD: 3000">
             </div>
             <div class="form-group">
-                <label>Trạng thái</label>
-                <select id="f-room-status">
-                    <option value="vacant" ${room.status === 'vacant' ? 'selected' : ''}>Trống</option>
-                    <option value="occupied" ${room.status === 'occupied' ? 'selected' : ''}>Đang thuê</option>
-                </select>
+                <label>Tên khách thuê</label>
+                <input type="text" id="f-room-tenant" value="${existingTenant ? existingTenant.name : ''}" placeholder="VD: Nguyễn Văn A">
             </div>
             <button type="submit" class="btn btn-primary">Lưu</button>
         </form>
@@ -282,15 +286,28 @@ async function showRoomForm(roomId) {
 
     $('#room-form').addEventListener('submit', async (e) => {
         e.preventDefault();
+        const tenantName = $('#f-room-tenant').value.trim();
         const data = {
             ...room,
             name: $('#f-room-name').value.trim(),
-            floor: $('#f-room-floor').value ? Number($('#f-room-floor').value) : null,
             price: $('#f-room-price').value ? Number($('#f-room-price').value) : null,
-            status: $('#f-room-status').value
+            deposit: $('#f-room-deposit').value ? Number($('#f-room-deposit').value) : null,
+            status: tenantName ? 'occupied' : 'vacant'
         };
         if (!data.name) return;
         await db.saveRoom(data);
+
+        // Create or update tenant
+        if (tenantName) {
+            const tenantData = existingTenant || { roomId: data.id };
+            tenantData.name = tenantName;
+            tenantData.roomId = data.id;
+            await db.saveTenant(tenantData);
+        } else if (existingTenant) {
+            // Remove tenant if name cleared
+            await db.deleteTenant(existingTenant.id);
+        }
+
         closeModal();
         renderPage();
     });
@@ -495,6 +512,36 @@ async function deleteTenant(tenantId) {
     await db.deleteTenant(tenantId);
     closeModal();
     renderPage();
+}
+
+// ===== Settings Page =====
+async function renderSettingsPage() {
+    const electricPrice = await db.getSetting('electricPrice') || '';
+    const waterPrice = await db.getSetting('waterPrice') || '';
+
+    mainContent.innerHTML = `
+        <div class="backup-section">
+            <h3>Giá điện / nước</h3>
+            <form id="settings-form">
+                <div class="form-group">
+                    <label>Giá điện (đ/kWh)</label>
+                    <input type="number" id="f-electric-price" value="${electricPrice}" placeholder="VD: 3500">
+                </div>
+                <div class="form-group">
+                    <label>Giá nước (đ/người)</label>
+                    <input type="number" id="f-water-price" value="${waterPrice}" placeholder="VD: 100000">
+                </div>
+                <button type="submit" class="btn btn-primary">Lưu cài đặt</button>
+            </form>
+        </div>
+    `;
+
+    $('#settings-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await db.saveSetting('electricPrice', $('#f-electric-price').value ? Number($('#f-electric-price').value) : null);
+        await db.saveSetting('waterPrice', $('#f-water-price').value ? Number($('#f-water-price').value) : null);
+        alert('Đã lưu cài đặt!');
+    });
 }
 
 // ===== Backup Page =====
