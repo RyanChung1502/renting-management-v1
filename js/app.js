@@ -1,6 +1,24 @@
 // ===== App State =====
 let currentPage = 'rooms';
 let searchQuery = '';
+let voiceEnabled = false;
+
+// ===== Voice =====
+function speak(viText, enText) {
+    if (!voiceEnabled || !window.speechSynthesis) return;
+    speechSynthesis.cancel();
+    const voices = speechSynthesis.getVoices();
+    const viVoice = voices.find(v => v.lang.startsWith('vi'));
+    const utter = new SpeechSynthesisUtterance(viVoice ? viText : (enText || viText));
+    if (viVoice) {
+        utter.voice = viVoice;
+        utter.lang = 'vi-VN';
+    } else {
+        utter.lang = 'en-US';
+    }
+    utter.rate = 1;
+    speechSynthesis.speak(utter);
+}
 
 // ===== DOM References =====
 const $ = (sel) => document.querySelector(sel);
@@ -18,6 +36,9 @@ const pageTitle = $('#page-title');
 // ===== Initialize =====
 document.addEventListener('DOMContentLoaded', async () => {
     await db.init();
+    voiceEnabled = (await db.getSetting('voiceEnabled')) || false;
+    // Preload voices
+    speechSynthesis.getVoices();
     setupEventListeners();
     renderPage();
 });
@@ -62,8 +83,13 @@ function setupEventListeners() {
 
     // FAB
     fab.addEventListener('click', () => {
-        if (currentPage === 'rooms') showRoomForm();
-        else if (currentPage === 'tenants') showTenantForm();
+        if (currentPage === 'rooms') {
+            speak('Bạn muốn thêm phòng mới?', 'Add a new room?');
+            showRoomForm();
+        } else if (currentPage === 'tenants') {
+            speak('Thêm người thuê mới', 'Add a new tenant');
+            showTenantForm();
+        }
     });
 
     // Modal
@@ -308,6 +334,7 @@ async function showRoomForm(roomId) {
             await db.deleteTenant(existingTenant.id);
         }
 
+        speak('Đã lưu phòng ' + data.name, 'Room ' + data.name + ' saved');
         closeModal();
         renderPage();
     });
@@ -328,6 +355,7 @@ async function confirmDeleteRoom(roomId) {
 
 async function deleteRoom(roomId) {
     await db.deleteRoom(roomId);
+    speak('Đã xóa phòng', 'Room deleted');
     closeModal();
     renderPage();
 }
@@ -477,6 +505,7 @@ async function showTenantForm(tenantId, preselectedRoomId) {
             }
         }
 
+        speak('Đã lưu người thuê ' + data.name, 'Tenant ' + data.name + ' saved');
         closeModal();
         renderPage();
     });
@@ -510,6 +539,7 @@ async function deleteTenant(tenantId) {
     }
 
     await db.deleteTenant(tenantId);
+    speak('Đã xóa người thuê', 'Tenant deleted');
     closeModal();
     renderPage();
 }
@@ -520,6 +550,17 @@ async function renderSettingsPage() {
     const waterPrice = await db.getSetting('waterPrice') || '';
 
     mainContent.innerHTML = `
+        <div class="backup-section">
+            <h3>Giọng nói</h3>
+            <div class="form-group toggle-group">
+                <label>Bật giọng nói</label>
+                <label class="toggle">
+                    <input type="checkbox" id="f-voice-toggle" ${voiceEnabled ? 'checked' : ''}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <p style="font-size:0.85rem;color:var(--text-secondary)">Ứng dụng sẽ đọc thông báo bằng tiếng Việt. Nếu không có giọng Việt, sẽ dùng tiếng Anh.</p>
+        </div>
         <div class="backup-section">
             <h3>Giá điện / nước</h3>
             <form id="settings-form">
@@ -536,10 +577,19 @@ async function renderSettingsPage() {
         </div>
     `;
 
+    $('#f-voice-toggle').addEventListener('change', async (e) => {
+        voiceEnabled = e.target.checked;
+        await db.saveSetting('voiceEnabled', voiceEnabled);
+        if (voiceEnabled) {
+            speak('Đã bật giọng nói', 'Voice enabled');
+        }
+    });
+
     $('#settings-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         await db.saveSetting('electricPrice', $('#f-electric-price').value ? Number($('#f-electric-price').value) : null);
         await db.saveSetting('waterPrice', $('#f-water-price').value ? Number($('#f-water-price').value) : null);
+        speak('Đã lưu cài đặt', 'Settings saved');
         alert('Đã lưu cài đặt!');
     });
 }
@@ -579,6 +629,7 @@ async function exportData() {
     a.download = `rentmgr-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    speak('Đã tải xuống bản sao lưu', 'Backup downloaded');
 }
 
 async function importData(event) {
@@ -593,6 +644,7 @@ async function importData(event) {
             return;
         }
         await db.importAll(backup);
+        speak('Khôi phục thành công', 'Restore completed');
         alert('Khôi phục thành công!');
         renderPage();
     } catch (e) {
