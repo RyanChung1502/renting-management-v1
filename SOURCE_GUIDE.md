@@ -17,7 +17,7 @@ renting-management-v1/
 │
 ├── js/
 │   ├── db.js           # Database layer — wrapper cho IndexedDB (~216 dòng)
-│   └── app.js          # Application logic — toàn bộ UI + business logic (~815 dòng)
+│   └── app.js          # Application logic — toàn bộ UI + business logic (~950 dòng)
 │
 ├── icon-192.png        # Icon PWA 192x192
 ├── icon-512.png        # Icon PWA 512x512
@@ -181,7 +181,7 @@ Chuyển trang: cập nhật `currentPage` rồi gọi `renderPage()`.
 
 #### showRoomForm(roomId?)
 - Mở form thêm/sửa phòng
-- Fields: Tên phòng*, Giá thuê, Đặt cọc, Tên người thuê (quick-add)
+- Fields: Tên phòng*, Giá thuê, Đặt cọc, **Số điện cũ**, **Số điện mới**, Tên người thuê (quick-add)
 - Submit → `saveRoom()`
 
 #### saveRoom()
@@ -220,28 +220,36 @@ Logic khi submit form:
   // day >= 25 hoặc day <= 5 → tháng hiện tại
   // còn lại → tháng trước
   ```
-- Fields: Số người, Số kWh điện
-- Submit → `calculateBill()`
+- Fields: Số người, Số điện cũ (pre-fill từ `room.electricOld`), Số điện mới (pre-fill từ `room.electricNew`)
+- kWh **không nhập tay** — tự tính: `kWh = max(0, electricNew - electricOld)`
+- Submit → tính tiền inline
 
-#### calculateBill()
-Công thức:
+#### Công thức tính tiền
 ```
 Tiền phòng  = room.price × 1000
-Tiền nước   = soNguoi × waterPrice
-Tiền điện   = soKwh × electricPrice
-──────────────────────────────────
+Tiền nước   = soNguoi × waterPrice × 1000   ← waterPrice đơn vị 1000đ
+Tiền điện   = kWh × electricPrice
+────────────────────────────────────────
 Tổng cộng   = tiền phòng + nước + điện
 ```
 
-Sau khi tính:
+#### Sau khi tính:
 ```
 1. Lưu room.lastBill = tổng
 2. Lưu room.lastBillMonth = "M/YYYY"
-3. db.saveRoom(room)
-4. Hiển thị breakdown trong modal
-5. speak("[Tổng] đồng") nếu voice enabled
-6. renderPage()  — cập nhật card hiển thị lastBill
+3. Cuộn số điện: room.electricOld = electricNew, room.electricNew = null
+4. db.saveRoom(room)
+5. Hiển thị breakdown + nút "Xuất ảnh hóa đơn"
+6. speak("[Tổng] đồng") nếu voice enabled
+7. renderPage()  — cập nhật card hiển thị lastBill
 ```
+
+#### exportBillImage(data)
+- Vẽ hóa đơn lên Canvas 800×500
+- Nền trắng, chữ đen — dễ đọc, dễ gửi qua Zalo/Messenger
+- Nội dung: tên phòng, tháng, chi tiết 3 khoản, tổng cộng
+- Xuất file `hoadon-<tênPhòng>-T<tháng>.jpg` (JPEG 92% quality)
+- Không dùng thư viện ngoài — hoạt động offline hoàn toàn
 
 ---
 
@@ -340,7 +348,7 @@ Settings được lưu vào IndexedDB dạng key-value.
 |-----|------|-------|
 | `voiceEnabled` | boolean | Bật/tắt giọng nói |
 | `electricPrice` | number | Giá điện (đ/kWh) |
-| `waterPrice` | number | Giá nước (đ/người/tháng) |
+| `waterPrice` | number | Giá nước **(1000đ/người/tháng)** |
 
 Settings load lên form khi mở trang Settings, lưu lại khi nhấn "Lưu cài đặt".
 
@@ -441,7 +449,7 @@ renderPage('rooms')     ← Hiển thị danh sách phòng mặc định
     ├── User click card      → showRoomDetail() / showTenantDetail()
     ├── User click FAB (+)   → showRoomForm() / showTenantForm()
     ├── User submit form     → saveRoom() / saveTenant() → renderPage()
-    ├── User click Tính tiền → showBillForm() → calculateBill()
+    ├── User click Tính tiền → showBillForm() → tính inline → exportBillImage()
     └── User search          → searchQuery = X → renderPage()
 ```
 
