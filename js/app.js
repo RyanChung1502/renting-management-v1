@@ -14,16 +14,25 @@ if (window.speechSynthesis) {
 
 function speak(viText, enText) {
     if (!voiceEnabled || !window.speechSynthesis) return;
+    // Fix Android Chrome bug: resume if paused
     speechSynthesis.cancel();
+    // Re-fetch voices in case they weren't loaded
+    if (cachedVoices.length === 0) {
+        cachedVoices = speechSynthesis.getVoices();
+    }
     const viVoice = cachedVoices.find(v => v.lang.startsWith('vi'));
     const utter = new SpeechSynthesisUtterance(viVoice ? viText : (enText || viText));
     if (viVoice) {
         utter.voice = viVoice;
         utter.lang = 'vi-VN';
     } else {
+        // Try to find any English voice
+        const enVoice = cachedVoices.find(v => v.lang.startsWith('en'));
+        if (enVoice) utter.voice = enVoice;
         utter.lang = 'en-US';
     }
     utter.rate = 1;
+    utter.volume = 1;
     speechSynthesis.speak(utter);
 }
 
@@ -595,7 +604,8 @@ async function renderSettingsPage() {
                     <span class="toggle-slider"></span>
                 </label>
             </div>
-            <p style="font-size:0.85rem;color:var(--text-secondary)">Ứng dụng sẽ đọc thông báo bằng tiếng Việt. Nếu không có giọng Việt, sẽ dùng tiếng Anh.</p>
+            <button type="button" id="btn-test-voice" class="btn btn-secondary" style="margin-top:12px">Test giọng nói</button>
+            <p id="voice-status" style="font-size:0.85rem;color:var(--text-secondary);margin-top:8px"></p>
         </div>
         <div class="backup-section">
             <h3>Giá điện / nước</h3>
@@ -613,12 +623,33 @@ async function renderSettingsPage() {
         </div>
     `;
 
+    // Show voice info
+    const updateVoiceStatus = () => {
+        if (cachedVoices.length === 0) cachedVoices = speechSynthesis.getVoices();
+        const viVoice = cachedVoices.find(v => v.lang.startsWith('vi'));
+        const status = $('#voice-status');
+        if (status) {
+            status.textContent = viVoice
+                ? 'Giọng Việt: ' + viVoice.name
+                : 'Không tìm thấy giọng Việt. Sẽ dùng tiếng Anh.';
+        }
+    };
+    updateVoiceStatus();
+
     $('#f-voice-toggle').addEventListener('change', async (e) => {
         voiceEnabled = e.target.checked;
         await db.saveSetting('voiceEnabled', voiceEnabled);
         if (voiceEnabled) {
             speak('Đã bật giọng nói', 'Voice enabled');
         }
+    });
+
+    $('#btn-test-voice').addEventListener('click', () => {
+        updateVoiceStatus();
+        const wasEnabled = voiceEnabled;
+        voiceEnabled = true;
+        speak('Xin chào, đây là giọng nói của ứng dụng', 'Hello, this is the app voice');
+        voiceEnabled = wasEnabled;
     });
 
     $('#settings-form').addEventListener('submit', async (e) => {
