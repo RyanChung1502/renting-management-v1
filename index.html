@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="RentMgr">
+    <title>RentMgr - Quản lý phòng trọ</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <h1 id="page-title">Quản lý phòng trọ</h1>
+            <div class="header-actions">
+                <button id="btn-search" class="icon-btn" aria-label="Tìm kiếm">🔍</button>
+                <button id="btn-menu" class="icon-btn" aria-label="Menu">☰</button>
+            </div>
+        </header>
+
+        <!-- Search Bar (hidden by default) -->
+        <div id="search-bar" class="search-bar hidden">
+            <input type="text" id="search-input" placeholder="Tìm phòng, người thuê...">
+            <button id="btn-search-close" class="icon-btn">✕</button>
+        </div>
+
+        <!-- Side Menu -->
+        <div id="menu-overlay" class="menu-overlay hidden"></div>
+        <nav id="side-menu" class="side-menu hidden">
+            <div class="menu-header">
+                <h2>RentMgr</h2>
+            </div>
+            <ul class="menu-list">
+                <li><a href="#" data-page="rooms" class="menu-item active">🏠 Danh sách phòng</a></li>
+                <li><a href="#" data-page="tenants" class="menu-item">👤 Người thuê</a></li>
+                <li><a href="#" data-page="backup" class="menu-item">💾 Sao lưu / Khôi phục</a></li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main id="main-content" class="main-content">
+            <!-- Pages will be rendered here by JS -->
+        </main>
+
+        <!-- FAB (Floating Action Button) -->
+        <button id="fab" class="fab">+</button>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div id="modal" class="modal">
+            <div class="modal-header">
+                <h2 id="modal-title"></h2>
+                <button id="modal-close" class="icon-btn">✕</button>
+            </div>
+            <div id="modal-body" class="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="js/db.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+</html>
