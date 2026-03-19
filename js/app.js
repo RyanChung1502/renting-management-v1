@@ -324,6 +324,8 @@ async function showRoomDetail(roomId) {
             <div class="detail-row"><span class="label">Giá thuê</span><span class="value">${formatCurrency(room.price)}/tháng</span></div>
             <div class="detail-row"><span class="label">Đặt cọc</span><span class="value">${formatCurrency(room.deposit)}</span></div>
             <div class="detail-row"><span class="label">Trạng thái</span><span class="value">${room.status === 'occupied' ? 'Đang thuê' : 'Trống'}</span></div>
+            <div class="detail-row"><span class="label">Số điện cũ</span><span class="value">${room.electricOld != null ? room.electricOld : '—'}</span></div>
+            <div class="detail-row"><span class="label">Số điện mới</span><span class="value">${room.electricNew != null ? room.electricNew : '—'}</span></div>
             <div class="detail-row"><span class="label">Tiền phòng tháng này</span><span class="value" style="color:var(--accent-light)">${room.lastBill ? Number(room.lastBill).toLocaleString('vi-VN') + 'đ' : '0đ'}${room.lastBillMonth ? ' (T' + room.lastBillMonth + ')' : ''}</span></div>
         </div>
         <div class="detail-section">
@@ -365,6 +367,9 @@ async function showBillForm(roomId) {
     const waterPrice = await db.getSetting('waterPrice') || 0;
     const billMonth = getBillMonth();
 
+    const hasMeters = room.electricOld != null && room.electricNew != null;
+    const autoKwh = hasMeters ? Math.max(0, room.electricNew - room.electricOld) : '';
+
     openModal(`Tính tiền - ${room.name}`, `
         <p style="margin-bottom:12px;color:var(--text-secondary)">Tháng ${billMonth.month}/${billMonth.year}</p>
         <form id="bill-form">
@@ -373,8 +378,16 @@ async function showBillForm(roomId) {
                 <input type="number" id="f-bill-people" value="1" min="1" placeholder="Số người ở">
             </div>
             <div class="form-group">
-                <label>Số kWh điện</label>
-                <input type="number" id="f-bill-kwh" value="" placeholder="VD: 120">
+                <label>Số điện cũ (kỳ trước)</label>
+                <input type="number" id="f-bill-elec-old" value="${room.electricOld != null ? room.electricOld : ''}" placeholder="VD: 1234">
+            </div>
+            <div class="form-group">
+                <label>Số điện mới (kỳ này)</label>
+                <input type="number" id="f-bill-elec-new" value="${room.electricNew != null ? room.electricNew : ''}" placeholder="VD: 1356">
+            </div>
+            <div class="form-group">
+                <label>Số kWh (tự tính hoặc nhập tay)</label>
+                <input type="number" id="f-bill-kwh" value="${autoKwh}" placeholder="VD: 120">
             </div>
             <button type="submit" class="btn btn-primary">Tính</button>
         </form>
@@ -389,19 +402,40 @@ async function showBillForm(roomId) {
         </div>
     `);
 
+    // Auto-calculate kWh when meter readings change
+    const recalcKwh = () => {
+        const oldVal = $('#f-bill-elec-old').value;
+        const newVal = $('#f-bill-elec-new').value;
+        if (oldVal !== '' && newVal !== '') {
+            const kwh = Math.max(0, Number(newVal) - Number(oldVal));
+            $('#f-bill-kwh').value = kwh;
+        }
+    };
+    $('#f-bill-elec-old').addEventListener('input', recalcKwh);
+    $('#f-bill-elec-new').addEventListener('input', recalcKwh);
+
     $('#bill-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const people = Number($('#f-bill-people').value) || 0;
         const kwh = Number($('#f-bill-kwh').value) || 0;
+        const elecOldVal = $('#f-bill-elec-old').value;
+        const elecNewVal = $('#f-bill-elec-new').value;
 
         const roomCost = (room.price || 0) * 1000;
         const waterCost = people * waterPrice;
         const electricCost = kwh * electricPrice;
         const total = roomCost + waterCost + electricCost;
 
-        // Save bill to room
+        // Save bill + meter readings to room; roll new → old for next cycle
         room.lastBill = total;
         room.lastBillMonth = `${billMonth.month}/${billMonth.year}`;
+        if (elecNewVal !== '') {
+            room.electricOld = Number(elecNewVal); // next month's old = this month's new
+            room.electricNew = null;
+        }
+        if (elecOldVal !== '' && elecNewVal !== '') {
+            // keep electricOld for display until new reading entered
+        }
         await db.saveRoom(room);
 
         const fmt = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
@@ -441,6 +475,14 @@ async function showRoomForm(roomId) {
                 <input type="number" id="f-room-deposit" value="${room.deposit || ''}" placeholder="VD: 3000">
             </div>
             <div class="form-group">
+                <label>Số điện cũ (kỳ trước)</label>
+                <input type="number" id="f-room-elec-old" value="${room.electricOld != null ? room.electricOld : ''}" placeholder="VD: 1234">
+            </div>
+            <div class="form-group">
+                <label>Số điện mới (kỳ này)</label>
+                <input type="number" id="f-room-elec-new" value="${room.electricNew != null ? room.electricNew : ''}" placeholder="VD: 1356">
+            </div>
+            <div class="form-group">
                 <label>Tên khách thuê</label>
                 <input type="text" id="f-room-tenant" value="${existingTenant ? existingTenant.name : ''}" placeholder="VD: Nguyễn Văn A">
             </div>
@@ -456,6 +498,8 @@ async function showRoomForm(roomId) {
             name: $('#f-room-name').value.trim(),
             price: $('#f-room-price').value ? Number($('#f-room-price').value) : null,
             deposit: $('#f-room-deposit').value ? Number($('#f-room-deposit').value) : null,
+            electricOld: $('#f-room-elec-old').value !== '' ? Number($('#f-room-elec-old').value) : null,
+            electricNew: $('#f-room-elec-new').value !== '' ? Number($('#f-room-elec-new').value) : null,
             status: tenantName ? 'occupied' : 'vacant'
         };
         if (!data.name) return;
