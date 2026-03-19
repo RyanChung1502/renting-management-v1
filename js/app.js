@@ -392,6 +392,7 @@ async function showBillForm(roomId) {
                 <div class="detail-row"><span class="label">Tiền điện</span><span class="value" id="bill-electric"></span></div>
                 <div class="detail-row" style="font-weight:700;font-size:1.2rem"><span class="label">Tổng cộng</span><span class="value" id="bill-total" style="color:var(--accent-light)"></span></div>
             </div>
+            <button class="btn btn-secondary" id="btn-export-bill" style="margin-top:4px">Xuất ảnh hóa đơn</button>
         </div>
     `);
 
@@ -424,6 +425,14 @@ async function showBillForm(roomId) {
         $('#bill-electric').textContent = fmt(electricCost) + ` (${kwh} kWh × ${fmt(electricPrice)})`;
         $('#bill-total').textContent = fmt(total);
         $('#bill-result').style.display = 'block';
+
+        $('#btn-export-bill').onclick = () => exportBillImage({
+            roomName: room.name,
+            month: `${billMonth.month}/${billMonth.year}`,
+            people, kwh, roomCost, waterCost, electricCost, total,
+            electricPriceVal: electricPrice,
+            waterPriceVal: waterPrice
+        });
 
         speak(`Tổng cộng ${fmt(total)}`, `Total ${fmt(total)}`);
         renderPage();
@@ -815,6 +824,115 @@ async function exportData() {
     a.click();
     URL.revokeObjectURL(url);
     speak('Đã tải xuống bản sao lưu', 'Backup downloaded');
+}
+
+// ===== Export Bill Image =====
+function exportBillImage({ roomName, month, people, kwh, roomCost, waterCost, electricCost, total, electricPriceVal, waterPriceVal }) {
+    const W = 420, H = 480;
+    const scale = 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = W * scale;
+    canvas.height = H * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+
+    const fmt = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
+
+    // Background
+    ctx.fillStyle = '#0f0f1a';
+    ctx.fillRect(0, 0, W, H);
+
+    // Card background
+    ctx.fillStyle = '#16213e';
+    ctx.beginPath();
+    ctx.roundRect(16, 16, W - 32, H - 32, 16);
+    ctx.fill();
+
+    // Header bar
+    ctx.fillStyle = '#e94560';
+    ctx.beginPath();
+    ctx.roundRect(16, 16, W - 32, 72, [16, 16, 0, 0]);
+    ctx.fill();
+
+    // Header text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 20px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('HÓA ĐƠN TIỀN NHÀ', W / 2, 50);
+    ctx.font = '13px Arial, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.82)';
+    ctx.fillText(`${roomName}  ·  Tháng ${month}`, W / 2, 70);
+
+    // Line items
+    const items = [
+        { label: 'Tiền phòng', value: fmt(roomCost), sub: null },
+        { label: 'Tiền nước', value: fmt(waterCost), sub: `${people} người × ${fmt(waterPriceVal * 1000)}` },
+        { label: 'Tiền điện', value: fmt(electricCost), sub: `${kwh} kWh × ${fmt(electricPriceVal)}` },
+    ];
+
+    let y = 116;
+    items.forEach(item => {
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#cccccc';
+        ctx.font = '14px Arial, sans-serif';
+        ctx.fillText(item.label, 36, y);
+
+        if (item.sub) {
+            ctx.fillStyle = '#777777';
+            ctx.font = '11px Arial, sans-serif';
+            ctx.fillText(item.sub, 36, y + 16);
+        }
+
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#eeeeee';
+        ctx.font = '15px Arial, sans-serif';
+        ctx.fillText(item.value, W - 36, y);
+
+        y += 60;
+    });
+
+    // Divider
+    ctx.strokeStyle = '#e9456055';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(36, y - 8);
+    ctx.lineTo(W - 36, y - 8);
+    ctx.stroke();
+
+    // Total label
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ff6b81';
+    ctx.font = 'bold 15px Arial, sans-serif';
+    ctx.fillText('TỔNG CỘNG', 36, y + 28);
+
+    // Total value
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ff6b81';
+    ctx.font = 'bold 26px Arial, sans-serif';
+    ctx.fillText(fmt(total), W - 36, y + 28);
+
+    // Dashed divider
+    ctx.strokeStyle = '#ffffff18';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(36, y + 52);
+    ctx.lineTo(W - 36, y + 52);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Footer
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#555555';
+    ctx.font = '12px Arial, sans-serif';
+    ctx.fillText('Vui lòng chuyển khoản hoặc thanh toán trực tiếp', W / 2, H - 46);
+    ctx.fillText('Cảm ơn bạn đã tin tưởng!', W / 2, H - 28);
+
+    // Download
+    const link = document.createElement('a');
+    link.download = `hoadon-${roomName}-T${month.replace('/', '-')}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
 }
 
 async function importData(event) {
