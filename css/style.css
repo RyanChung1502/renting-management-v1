@@ -23,7 +23,7 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 17px;
+    font-size: 18px;
     background: var(--bg-primary);
     color: var(--text-primary);
     min-height: 100vh;
@@ -44,7 +44,7 @@ body {
 }
 
 .header h1 {
-    font-size: 1.2rem;
+    font-size: 1.4rem;
     font-weight: 600;
 }
 
@@ -57,7 +57,7 @@ body {
     background: none;
     border: none;
     color: var(--text-primary);
-    font-size: 1.3rem;
+    font-size: 1.5rem;
     cursor: pointer;
     padding: 8px;
     border-radius: 8px;
@@ -80,12 +80,12 @@ body {
 
 .search-bar input {
     flex: 1;
-    padding: 10px 16px;
+    padding: 12px 16px;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--bg-primary);
     color: var(--text-primary);
-    font-size: 1rem;
+    font-size: 1.1rem;
     outline: none;
 }
 
@@ -125,7 +125,7 @@ body {
 }
 
 .menu-header h2 {
-    font-size: 1.4rem;
+    font-size: 1.5rem;
     color: var(--accent);
 }
 
@@ -136,10 +136,10 @@ body {
 
 .menu-item {
     display: block;
-    padding: 14px 20px;
+    padding: 16px 20px;
     color: var(--text-primary);
     text-decoration: none;
-    font-size: 1rem;
+    font-size: 1.1rem;
     transition: background 0.2s;
 }
 
@@ -192,13 +192,13 @@ body {
 }
 
 .room-name {
-    font-size: 1.1rem;
+    font-size: 1.25rem;
     font-weight: 600;
 }
 
 .room-status {
-    font-size: 0.8rem;
-    padding: 4px 10px;
+    font-size: 0.9rem;
+    padding: 4px 12px;
     border-radius: 20px;
     font-weight: 500;
 }
@@ -217,14 +217,14 @@ body {
     display: flex;
     gap: 16px;
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: 1rem;
 }
 
 .room-tenant {
     margin-top: 8px;
     padding-top: 8px;
     border-top: 1px solid var(--border);
-    font-size: 0.85rem;
+    font-size: 1rem;
     color: var(--text-secondary);
 }
 
@@ -244,27 +244,27 @@ body {
 }
 
 .tenant-name {
-    font-size: 1.05rem;
+    font-size: 1.15rem;
     font-weight: 600;
     margin-bottom: 4px;
 }
 
 .tenant-phone {
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: 1rem;
 }
 
 .tenant-room {
     color: var(--accent-light);
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     margin-top: 4px;
 }
 
 /* ===== Contract Status ===== */
 .contract-status {
     display: inline-block;
-    font-size: 0.8rem;
-    padding: 3px 8px;
+    font-size: 0.9rem;
+    padding: 4px 10px;
     border-radius: 12px;
     margin-top: 4px;
 }
@@ -289,13 +289,13 @@ body {
     position: fixed;
     bottom: 24px;
     right: 24px;
-    width: 56px;
-    height: 56px;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
     background: var(--accent);
     color: white;
     border: none;
-    font-size: 2rem;
+    font-size: 2.2rem;
     cursor: pointer;
     box-shadow: 0 4px 12px rgba(233, 69, 96, 0.4);
     z-index: 50;
@@ -347,7 +347,7 @@ body {
 }
 
 .modal-header h2 {
-    font-size: 1.1rem;
+    font-size: 1.25rem;
 }
 
 .modal-body {
@@ -362,7 +362,7 @@ body {
 .form-group label {
     display: block;
     margin-bottom: 6px;
-    font-size: 1rem;
+    font-size: 1.05rem;
     color: var(--text-secondary);
 }
 
@@ -374,7 +374,7 @@ body {
     border-radius: 8px;
     background: var(--bg-primary);
     color: var(--text-primary);
-    font-size: 1.15rem;
+    font-size: 1.2rem;
     outline: none;
 }
 
@@ -384,10 +384,10 @@ body {
 }
 
 .btn {
-    padding: 12px 24px;
+    padding: 14px 24px;
     border: none;
     border-radius: 8px;
-    font-size: 1rem;
+    font-size: 1.1rem;
     font-weight: 500;
     cursor: pointer;
     transition: opacity 0.2s;
@@ -421,7 +421,7 @@ body {
 }
 
 .detail-section h3 {
-    font-size: 0.9rem;
+    font-size: 1rem;
     color: var(--text-secondary);
     margin-bottom: 8px;
     text-transform: uppercase;
@@ -431,9 +431,9 @@ body {
 .detail-row {
     display: flex;
     justify-content: space-between;
-    padding: 10px 0;
+    padding: 12px 0;
     border-bottom: 1px solid var(--border);
-    font-size: 1.05rem;
+    font-size: 1.1rem;
 }
 
 .detail-row .label {
@@ -470,12 +470,12 @@ body {
 
 .backup-section h3 {
     margin-bottom: 12px;
-    font-size: 1rem;
+    font-size: 1.1rem;
 }
 
 .backup-section p {
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: 1rem;
     margin-bottom: 12px;
 }
 
@@ -536,9 +536,9 @@ body {
     transform: translateX(-50%) translateY(100px);
     background: var(--bg-card);
     color: var(--text-primary);
-    padding: 12px 24px;
+    padding: 14px 24px;
     border-radius: 8px;
-    font-size: 0.9rem;
+    font-size: 1rem;
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     opacity: 0;
     transition: transform 0.3s, opacity 0.3s;
@@ -559,12 +559,12 @@ body {
 }
 
 .empty-state .emoji {
-    font-size: 3rem;
+    font-size: 3.5rem;
     margin-bottom: 16px;
 }
 
 .empty-state p {
-    font-size: 1rem;
+    font-size: 1.1rem;
 }
 
 /* ===== Utilities ===== */
