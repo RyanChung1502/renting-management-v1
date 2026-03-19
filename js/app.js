@@ -324,6 +324,7 @@ async function showRoomDetail(roomId) {
             <div class="detail-row"><span class="label">Giá thuê</span><span class="value">${formatCurrency(room.price)}/tháng</span></div>
             <div class="detail-row"><span class="label">Đặt cọc</span><span class="value">${formatCurrency(room.deposit)}</span></div>
             <div class="detail-row"><span class="label">Trạng thái</span><span class="value">${room.status === 'occupied' ? 'Đang thuê' : 'Trống'}</span></div>
+            <div class="detail-row"><span class="label">Tiền phòng tháng này</span><span class="value" style="color:var(--accent-light)">${room.lastBill ? Number(room.lastBill).toLocaleString('vi-VN') + 'đ' : '0đ'}${room.lastBillMonth ? ' (T' + room.lastBillMonth + ')' : ''}</span></div>
         </div>
         <div class="detail-section">
             <h3>Người thuê</h3>
