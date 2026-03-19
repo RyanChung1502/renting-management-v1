@@ -328,13 +328,84 @@ async function showRoomDetail(roomId) {
             <h3>Người thuê</h3>
             ${tenantHTML}
         </div>
+        ${room.status === 'occupied' ? `<button class="btn btn-primary" onclick="showBillForm('${room.id}')" style="margin-bottom:8px">Tính tiền</button>` : ''}
         <div class="detail-actions">
-            <button class="btn btn-primary" onclick="showRoomForm('${room.id}')">Sửa</button>
+            <button class="btn btn-secondary" onclick="showRoomForm('${room.id}')">Sửa</button>
             <button class="btn btn-danger" onclick="confirmDeleteRoom('${room.id}')">Xóa</button>
         </div>
         ${tenant ? `<button class="btn btn-secondary" onclick="showTenantForm('${tenant.id}')">Sửa người thuê</button>` :
                     `<button class="btn btn-secondary" onclick="showTenantForm(null, '${room.id}')">Thêm người thuê</button>`}
     `);
+}
+
+// ===== Bill Calculation =====
+function getBillMonth() {
+    const now = new Date();
+    const day = now.getDate();
+    // Cuối tháng (>=25) hoặc đầu tháng (<=5) → tính tháng hiện tại
+    // Giữa tháng → tính tháng trước
+    if (day >= 25 || day <= 5) {
+        return { month: now.getMonth() + 1, year: now.getFullYear() };
+    } else {
+        let m = now.getMonth(); // 0-indexed, so this is previous month
+        let y = now.getFullYear();
+        if (m === 0) { m = 12; y--; }
+        return { month: m, year: y };
+    }
+}
+
+async function showBillForm(roomId) {
+    const room = await db.getRoom(roomId);
+    if (!room) return;
+    const tenants = await db.getTenantsByRoom(roomId);
+    const tenant = tenants[0];
+    const electricPrice = await db.getSetting('electricPrice') || 0;
+    const waterPrice = await db.getSetting('waterPrice') || 0;
+    const billMonth = getBillMonth();
+
+    openModal(`Tính tiền - ${room.name}`, `
+        <p style="margin-bottom:12px;color:var(--text-secondary)">Tháng ${billMonth.month}/${billMonth.year}</p>
+        <form id="bill-form">
+            <div class="form-group">
+                <label>Số người</label>
+                <input type="number" id="f-bill-people" value="1" min="1" placeholder="Số người ở">
+            </div>
+            <div class="form-group">
+                <label>Số kWh điện</label>
+                <input type="number" id="f-bill-kwh" value="" placeholder="VD: 120">
+            </div>
+            <button type="submit" class="btn btn-primary">Tính</button>
+        </form>
+        <div id="bill-result" style="display:none;margin-top:16px">
+            <div class="detail-section">
+                <h3>Chi tiết</h3>
+                <div class="detail-row"><span class="label">Tiền phòng</span><span class="value" id="bill-room"></span></div>
+                <div class="detail-row"><span class="label">Tiền nước</span><span class="value" id="bill-water"></span></div>
+                <div class="detail-row"><span class="label">Tiền điện</span><span class="value" id="bill-electric"></span></div>
+                <div class="detail-row" style="font-weight:700;font-size:1.2rem"><span class="label">Tổng cộng</span><span class="value" id="bill-total" style="color:var(--accent-light)"></span></div>
+            </div>
+        </div>
+    `);
+
+    $('#bill-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const people = Number($('#f-bill-people').value) || 0;
+        const kwh = Number($('#f-bill-kwh').value) || 0;
+
+        const roomCost = (room.price || 0) * 1000;
+        const waterCost = people * waterPrice;
+        const electricCost = kwh * electricPrice;
+        const total = roomCost + waterCost + electricCost;
+
+        const fmt = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
+        $('#bill-room').textContent = fmt(roomCost);
+        $('#bill-water').textContent = fmt(waterCost) + ` (${people} người × ${fmt(waterPrice)})`;
+        $('#bill-electric').textContent = fmt(electricCost) + ` (${kwh} kWh × ${fmt(electricPrice)})`;
+        $('#bill-total').textContent = fmt(total);
+        $('#bill-result').style.display = 'block';
+
+        speak(`Tổng cộng ${fmt(total)}`, `Total ${fmt(total)}`);
+    });
 }
 
 // ===== Room Form =====
