@@ -4,11 +4,18 @@ let searchQuery = '';
 let voiceEnabled = false;
 
 // ===== Voice =====
+let cachedVoices = [];
+if (window.speechSynthesis) {
+    cachedVoices = speechSynthesis.getVoices();
+    speechSynthesis.addEventListener('voiceschanged', () => {
+        cachedVoices = speechSynthesis.getVoices();
+    });
+}
+
 function speak(viText, enText) {
     if (!voiceEnabled || !window.speechSynthesis) return;
     speechSynthesis.cancel();
-    const voices = speechSynthesis.getVoices();
-    const viVoice = voices.find(v => v.lang.startsWith('vi'));
+    const viVoice = cachedVoices.find(v => v.lang.startsWith('vi'));
     const utter = new SpeechSynthesisUtterance(viVoice ? viText : (enText || viText));
     if (viVoice) {
         utter.voice = viVoice;
@@ -18,6 +25,19 @@ function speak(viText, enText) {
     }
     utter.rate = 1;
     speechSynthesis.speak(utter);
+}
+
+// ===== Toast =====
+function showToast(msg) {
+    let toast = document.getElementById('toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'toast';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.className = 'toast show';
+    setTimeout(() => { toast.className = 'toast'; }, 2500);
 }
 
 // ===== DOM References =====
@@ -350,6 +370,7 @@ async function showRoomForm(roomId) {
         }
 
         speak('Đã lưu phòng ' + data.name, 'Room ' + data.name + ' saved');
+        showToast('Đã lưu ' + data.name);
         closeModal();
         renderPage();
     });
@@ -605,7 +626,7 @@ async function renderSettingsPage() {
         await db.saveSetting('electricPrice', $('#f-electric-price').value ? Number($('#f-electric-price').value) : null);
         await db.saveSetting('waterPrice', $('#f-water-price').value ? Number($('#f-water-price').value) : null);
         speak('Đã lưu cài đặt', 'Settings saved');
-        alert('Đã lưu cài đặt!');
+        showToast('Đã lưu cài đặt!');
     });
 }
 
@@ -655,14 +676,14 @@ async function importData(event) {
     try {
         const backup = JSON.parse(text);
         if (!backup.data || !backup.data.rooms) {
-            alert('File không hợp lệ!');
+            showToast('File không hợp lệ!');
             return;
         }
         await db.importAll(backup);
         speak('Khôi phục thành công', 'Restore completed');
-        alert('Khôi phục thành công!');
+        showToast('Khôi phục thành công!');
         renderPage();
     } catch (e) {
-        alert('Lỗi đọc file: ' + e.message);
+        showToast('Lỗi đọc file: ' + e.message);
     }
 }
