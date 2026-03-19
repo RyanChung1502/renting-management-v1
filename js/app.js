@@ -292,6 +292,7 @@ async function renderRoomList() {
                     ${room.deposit ? `<span>Cọc: ${formatCurrency(room.deposit)}</span>` : ''}
                 </div>
                 ${tenantHTML}
+                ${status === 'occupied' ? `<button class="btn-bill" onclick="event.stopPropagation(); showBillForm('${room.id}')">Tính tiền</button>` : ''}
             </div>`;
     }).join('')}</div>`;
 }

@@ -228,6 +228,23 @@ body {
     color: var(--text-secondary);
 }
 
+.btn-bill {
+    margin-top: 10px;
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    background: rgba(233, 69, 96, 0.1);
+    color: var(--accent-light);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.btn-bill:active {
+    opacity: 0.8;
+}
+
 /* ===== Tenant Cards ===== */
 .tenant-list {
     display: flex;
