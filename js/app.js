@@ -143,7 +143,7 @@ function setupEventListeners() {
     // FAB
     fab.addEventListener('click', () => {
         if (currentPage === 'rooms') {
-            speak('Bạn muốn thêm phòng mới?', 'Add a new room?');
+            speak('Thêm phòng mới', 'Add new room');
             showRoomForm();
         } else if (currentPage === 'tenants') {
             speak('Thêm người thuê mới', 'Add a new tenant');
