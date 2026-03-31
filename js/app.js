@@ -198,7 +198,7 @@ function renderPage() {
             renderTenantList();
             break;
         case 'electric':
-            pageTitle.textContent = 'Số điện';
+            pageTitle.textContent = 'Điện & Nước';
             fab.classList.add('hidden');
             renderElectricPage();
             break;
@@ -385,19 +385,21 @@ async function showBillForm(roomId) {
     const elecNew = currentMeter ? currentMeter.newValue : (room.electricNew ?? '');
     const kwh = (elecOld !== '' && elecNew !== '') ? Math.max(0, Number(elecNew) - Number(elecOld)) : 0;
 
+    const people = room.people || 0;
+
     openModal(`Tính tiền - ${room.name}`, `
         <p style="margin-bottom:12px;color:var(--text-secondary)">Tháng ${currentMonth}</p>
-        <form id="bill-form">
-            <div class="form-group">
-                <label>Số người</label>
-                <input type="number" id="f-bill-people" value="1" min="1" placeholder="Số người ở">
+        <div id="bill-form">
+            <div class="detail-row" style="margin-bottom:8px;padding:8px;background:var(--bg);border-radius:8px">
+                <span class="label">Số người</span>
+                <span class="value">${people > 0 ? `<strong>${people} người</strong>` : '<span style="color:var(--accent)">Chưa nhập (vào tab Điện & Nước)</span>'}</span>
             </div>
             <div class="detail-row" style="margin-bottom:12px;padding:8px;background:var(--bg);border-radius:8px">
                 <span class="label">Số điện</span>
-                <span class="value">${elecOld !== '' && elecNew !== '' ? `${elecOld} → ${elecNew} = <strong>${kwh} kWh</strong>` : '<span style="color:var(--accent)">Chưa nhập (vào tab Số điện)</span>'}</span>
+                <span class="value">${elecOld !== '' && elecNew !== '' ? `${elecOld} → ${elecNew} = <strong>${kwh} kWh</strong>` : '<span style="color:var(--accent)">Chưa nhập (vào tab Điện & Nước)</span>'}</span>
             </div>
-            <button type="submit" class="btn btn-primary">Tính</button>
-        </form>
+            <button class="btn btn-primary" id="btn-calc-bill">Tính</button>
+        </div>
         <div id="bill-result" style="display:none;margin-top:16px">
             <div class="detail-section">
                 <h3>Chi tiết</h3>
@@ -410,10 +412,7 @@ async function showBillForm(roomId) {
         </div>
     `);
 
-    $('#bill-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const people = Number($('#f-bill-people').value) || 0;
-
+    $('#btn-calc-bill').addEventListener('click', async () => {
         const roomCost = (room.price || 0) * 1000;
         const waterCost = people * waterPrice * 1000;
         const electricCost = kwh * electricPrice;
@@ -764,7 +763,6 @@ async function renderElectricPage() {
         if (!meterMap[m.roomId]) meterMap[m.roomId] = [];
         meterMap[m.roomId].push(m);
     });
-    // Sort each room's meters by month descending
     Object.values(meterMap).forEach(arr => arr.sort((a, b) => {
         const [am, ay] = a.month.split('/').map(Number);
         const [bm, by] = b.month.split('/').map(Number);
@@ -787,14 +785,22 @@ async function renderElectricPage() {
                 const oldVal = currentMeter ? currentMeter.oldValue : (prevMeter ? prevMeter.newValue : '');
                 const newVal = currentMeter ? currentMeter.newValue : '';
                 const kwh = (oldVal !== '' && newVal !== '') ? Math.max(0, Number(newVal) - Number(oldVal)) : null;
+                const ppl = room.people || 0;
 
                 return `
                 <div class="electric-card">
                     <div class="electric-card-header">
                         <span class="room-name">${room.name}</span>
-                        ${kwh !== null ? `<span class="electric-kwh">${kwh} kWh</span>` : ''}
+                        <div style="display:flex;gap:6px">
+                            ${ppl > 0 ? `<span class="electric-kwh" style="background:rgba(52,152,219,0.15);color:#3498db">${ppl} người</span>` : ''}
+                            ${kwh !== null ? `<span class="electric-kwh">${kwh} kWh</span>` : ''}
+                        </div>
                     </div>
                     <div class="electric-inputs">
+                        <div class="form-group" style="flex:1;margin:0">
+                            <label>Số người</label>
+                            <input type="number" class="elec-people" data-room="${room.id}" value="${ppl || ''}" min="0" placeholder="0">
+                        </div>
                         <div class="form-group" style="flex:1;margin:0">
                             <label>Số cũ</label>
                             <input type="number" class="elec-old" data-room="${room.id}" value="${oldVal}" placeholder="Kỳ trước">
@@ -820,58 +826,91 @@ async function renderElectricPage() {
             }).join('')}
         </div>`;
 
-    // Save meter handlers
+    // Save handlers
     document.querySelectorAll('.btn-save-meter').forEach(btn => {
         btn.addEventListener('click', async () => {
             const roomId = btn.dataset.room;
             const card = btn.closest('.electric-card');
             const oldValue = card.querySelector('.elec-old').value;
             const newValue = card.querySelector('.elec-new').value;
+            const peopleValue = card.querySelector('.elec-people').value;
 
-            if (oldValue === '' && newValue === '') {
-                showToast('Nhập ít nhất 1 giá trị');
-                return;
-            }
-
-            // Find or create meter for current month
+            // Save meter reading
             const roomMeters = await db.getMetersByRoom(roomId);
             let meter = roomMeters.find(m => m.month === currentMonth);
-            if (!meter) {
-                meter = { roomId, month: currentMonth };
+            if (oldValue !== '' || newValue !== '') {
+                if (!meter) meter = { roomId, month: currentMonth };
+                meter.oldValue = oldValue !== '' ? Number(oldValue) : '';
+                meter.newValue = newValue !== '' ? Number(newValue) : '';
+                await db.saveMeter(meter);
             }
-            meter.oldValue = oldValue !== '' ? Number(oldValue) : '';
-            meter.newValue = newValue !== '' ? Number(newValue) : '';
-            await db.saveMeter(meter);
 
-            // Also update room's electricOld/electricNew for bill form
+            // Save people count + sync electric to room
             const room = await db.getRoom(roomId);
             if (room) {
-                room.electricOld = meter.oldValue;
-                room.electricNew = meter.newValue;
+                room.people = peopleValue !== '' ? Number(peopleValue) : 0;
+                room.electricOld = oldValue !== '' ? Number(oldValue) : '';
+                room.electricNew = newValue !== '' ? Number(newValue) : '';
                 await db.saveRoom(room);
             }
 
-            showToast('Đã lưu số điện');
+            showToast('Đã lưu');
             renderElectricPage();
         });
     });
 
-    // Export electric meters
+    // Export electric meters as HTML table (full year)
     document.getElementById('btn-export-electric')?.addEventListener('click', () => {
-        const fmt = (n) => Number(n).toLocaleString('vi-VN');
-        let text = `⚡ SỐ ĐIỆN - THÁNG ${currentMonth}\n${'═'.repeat(30)}\n`;
-        sortedRooms.forEach(room => {
-            const roomMeters = meterMap[room.id] || [];
-            const cm = roomMeters.find(m => m.month === currentMonth);
-            const pm = roomMeters.find(m => m.month !== currentMonth);
-            const old = cm ? cm.oldValue : (pm ? pm.newValue : '');
-            const nw = cm ? cm.newValue : '';
-            const used = (old !== '' && nw !== '') ? Math.max(0, Number(nw) - Number(old)) : null;
-            text += `\n${room.name}: ${old !== '' ? fmt(old) : '?'} → ${nw !== '' ? fmt(nw) : '?'}`;
-            if (used !== null) text += ` = ${used} kWh`;
-        });
-        shareOrCopy(text, 'Đã sao chép bảng số điện');
+        exportElectricTable(sortedRooms, meterMap, billMonth);
     });
+}
+
+function exportElectricTable(sortedRooms, meterMap, billMonth) {
+    const year = billMonth.year;
+    const months = [];
+    for (let m = 1; m <= 12; m++) months.push(`${m}/${year}`);
+
+    let html = `<html><head><meta charset="UTF-8"><title>Số điện ${year}</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 16px; }
+        h2 { text-align: center; }
+        table { border-collapse: collapse; width: 100%; font-size: 13px; }
+        th, td { border: 1px solid #333; padding: 4px 6px; text-align: center; white-space: nowrap; }
+        th { background: #1a1a2e; color: #fff; }
+        tr:nth-child(even) { background: #f5f5f5; }
+        .room-name { text-align: left; font-weight: bold; }
+    </style></head><body>
+    <h2>⚡ Bảng số điện năm ${year}</h2>
+    <table>
+        <tr><th>Phòng</th>${months.map(m => `<th>T${m.split('/')[0]}<br>Cũ</th><th>T${m.split('/')[0]}<br>Mới</th><th>T${m.split('/')[0]}<br>kWh</th>`).join('')}</tr>`;
+
+    sortedRooms.forEach(room => {
+        const roomMeters = meterMap[room.id] || [];
+        html += `<tr><td class="room-name">${room.name}</td>`;
+        months.forEach(month => {
+            const meter = roomMeters.find(m => m.month === month);
+            if (meter && meter.oldValue !== '' && meter.newValue !== '') {
+                const used = Math.max(0, Number(meter.newValue) - Number(meter.oldValue));
+                html += `<td>${meter.oldValue}</td><td>${meter.newValue}</td><td><strong>${used}</strong></td>`;
+            } else if (meter) {
+                html += `<td>${meter.oldValue ?? ''}</td><td>${meter.newValue ?? ''}</td><td></td>`;
+            } else {
+                html += `<td></td><td></td><td></td>`;
+            }
+        });
+        html += `</tr>`;
+    });
+
+    html += `</table></body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `so-dien-${year}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Đã tải file bảng số điện');
 }
 
 // ===== Export All Bills =====
@@ -888,25 +927,49 @@ async function exportAllBills() {
     }
 
     const fmt = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
-    let text = `💰 TỔNG HỢP TIỀN PHÒNG\n${'═'.repeat(30)}\n`;
     let grandTotal = 0;
+
+    let html = `<html><head><meta charset="UTF-8"><title>Tổng hợp tiền phòng</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 16px; }
+        h2 { text-align: center; }
+        table { border-collapse: collapse; width: 100%; font-size: 13px; }
+        th, td { border: 1px solid #333; padding: 6px 8px; text-align: right; }
+        th { background: #1a1a2e; color: #fff; }
+        tr:nth-child(even) { background: #f5f5f5; }
+        .left { text-align: left; }
+        .total-row { font-weight: bold; background: #e8e8e8 !important; }
+    </style></head><body>
+    <h2>💰 Tổng hợp tiền phòng</h2>
+    <table>
+        <tr><th class="left">Phòng</th><th class="left">Người thuê</th><th>Tiền phòng</th><th>Nước</th><th>Điện</th><th>Tổng</th></tr>`;
 
     billRooms.forEach(room => {
         const tenant = tenantMap[room.id];
         const d = room.lastBillDetails || {};
-        text += `\n📋 ${room.name}${room.lastBillMonth ? ' - T' + room.lastBillMonth : ''}`;
-        if (tenant) text += `\n   👤 ${tenant.name}`;
-        text += `\n   🏠 Phòng: ${fmt(d.roomCost || (room.price || 0) * 1000)}`;
-        if (d.waterCost !== undefined) text += `\n   💧 Nước: ${fmt(d.waterCost)} (${d.people} người)`;
-        if (d.electricCost !== undefined) text += `\n   ⚡ Điện: ${fmt(d.electricCost)} (${d.kwh} kWh)`;
-        text += `\n   💰 Tổng: ${fmt(room.lastBill)}`;
+        const roomCost = d.roomCost || (room.price || 0) * 1000;
+        html += `<tr>
+            <td class="left">${room.name}${room.lastBillMonth ? ' (T' + room.lastBillMonth + ')' : ''}</td>
+            <td class="left">${tenant ? tenant.name : '—'}</td>
+            <td>${fmt(roomCost)}</td>
+            <td>${d.waterCost !== undefined ? fmt(d.waterCost) : '—'}</td>
+            <td>${d.electricCost !== undefined ? fmt(d.electricCost) : '—'}</td>
+            <td><strong>${fmt(room.lastBill)}</strong></td>
+        </tr>`;
         grandTotal += room.lastBill;
     });
 
-    text += `\n\n${'═'.repeat(30)}`;
-    text += `\n🏦 TỔNG TẤT CẢ: ${fmt(grandTotal)}`;
+    html += `<tr class="total-row"><td class="left" colspan="5">TỔNG CỘNG</td><td>${fmt(grandTotal)}</td></tr>`;
+    html += `</table></body></html>`;
 
-    shareOrCopy(text, 'Đã sao chép bảng tổng hợp');
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tong-hop-tien-phong.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Đã tải file tổng hợp');
 }
 
 function shareOrCopy(text, toastMsg) {
