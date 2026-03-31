@@ -867,6 +867,7 @@ async function renderElectricPage() {
 
 function exportElectricTable(sortedRooms, meterMap, billMonth) {
     const year = billMonth.year;
+    // Columns: T1..T12 = chỉ số chốt đầu mỗi tháng, kWh tính giữa 2 tháng liên tiếp
     const months = [];
     for (let m = 1; m <= 12; m++) months.push(`${m}/${year}`);
 
@@ -879,26 +880,39 @@ function exportElectricTable(sortedRooms, meterMap, billMonth) {
         th { background: #1a1a2e; color: #fff; }
         tr:nth-child(even) { background: #f5f5f5; }
         .room-name { text-align: left; font-weight: bold; }
+        .kwh { color: #e74c3c; font-weight: bold; }
     </style></head><body>
     <h2>⚡ Bảng số điện năm ${year}</h2>
     <table>
-        <tr><th>Phòng</th>${months.map(m => `<th>T${m.split('/')[0]}<br>Cũ</th><th>T${m.split('/')[0]}<br>Mới</th><th>T${m.split('/')[0]}<br>kWh</th>`).join('')}</tr>`;
+        <tr><th>Phòng</th>${months.map((_, i) => `<th>T${i + 1}</th>`).join('')}<th>Tổng kWh</th></tr>`;
 
     sortedRooms.forEach(room => {
         const roomMeters = meterMap[room.id] || [];
-        html += `<tr><td class="room-name">${room.name}</td>`;
-        months.forEach(month => {
+        // Get reading for each month (oldValue = chỉ số chốt đầu tháng đó)
+        const readings = months.map(month => {
             const meter = roomMeters.find(m => m.month === month);
-            if (meter && meter.oldValue !== '' && meter.newValue !== '') {
-                const used = Math.max(0, Number(meter.newValue) - Number(meter.oldValue));
-                html += `<td>${meter.oldValue}</td><td>${meter.newValue}</td><td><strong>${used}</strong></td>`;
-            } else if (meter) {
-                html += `<td>${meter.oldValue ?? ''}</td><td>${meter.newValue ?? ''}</td><td></td>`;
-            } else {
-                html += `<td></td><td></td><td></td>`;
-            }
+            return meter && meter.oldValue !== '' ? Number(meter.oldValue) : null;
         });
-        html += `</tr>`;
+        // Also get the newValue of last month that has data (= chỉ số cuối cùng)
+        const lastMeterWithNew = roomMeters.find(m => m.newValue !== '' && m.newValue != null);
+        const lastMonthIdx = lastMeterWithNew ? months.indexOf(lastMeterWithNew.month) : -1;
+        if (lastMonthIdx >= 0 && lastMonthIdx + 1 < 12) {
+            // newValue of month X = reading of month X+1
+            if (readings[lastMonthIdx + 1] === null) {
+                readings[lastMonthIdx + 1] = Number(lastMeterWithNew.newValue);
+            }
+        }
+
+        let totalKwh = 0;
+        html += `<tr><td class="room-name">${room.name}</td>`;
+        months.forEach((month, i) => {
+            const val = readings[i];
+            const prev = i > 0 ? readings[i - 1] : null;
+            const kwh = (val !== null && prev !== null) ? Math.max(0, val - prev) : null;
+            if (kwh !== null) totalKwh += kwh;
+            html += `<td>${val !== null ? val : ''}${kwh !== null ? `<br><span class="kwh">${kwh}</span>` : ''}</td>`;
+        });
+        html += `<td class="kwh">${totalKwh > 0 ? totalKwh : ''}</td></tr>`;
     });
 
     html += `</table></body></html>`;
