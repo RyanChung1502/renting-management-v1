@@ -867,64 +867,105 @@ async function renderElectricPage() {
 
 function exportElectricTable(sortedRooms, meterMap, billMonth) {
     const year = billMonth.year;
-    // Columns: T1..T12 = chỉ số chốt đầu mỗi tháng, kWh tính giữa 2 tháng liên tiếp
     const months = [];
     for (let m = 1; m <= 12; m++) months.push(`${m}/${year}`);
 
-    let html = `<html><head><meta charset="UTF-8"><title>Số điện ${year}</title>
-    <style>
-        body { font-family: Arial, sans-serif; padding: 16px; }
-        h2 { text-align: center; }
-        table { border-collapse: collapse; width: 100%; font-size: 13px; }
-        th, td { border: 1px solid #333; padding: 4px 6px; text-align: center; white-space: nowrap; }
-        th { background: #1a1a2e; color: #fff; }
-        tr:nth-child(even) { background: #f5f5f5; }
-        .room-name { text-align: left; font-weight: bold; }
-        .kwh { color: #e74c3c; font-weight: bold; }
-    </style></head><body>
-    <h2>⚡ Bảng số điện năm ${year}</h2>
-    <table>
-        <tr><th>Phòng</th>${months.map((_, i) => `<th>T${i + 1}</th>`).join('')}<th>Tổng kWh</th></tr>`;
-
-    sortedRooms.forEach(room => {
+    // Build data rows
+    const dataRows = sortedRooms.map(room => {
         const roomMeters = meterMap[room.id] || [];
-        // Get reading for each month (oldValue = chỉ số chốt đầu tháng đó)
         const readings = months.map(month => {
             const meter = roomMeters.find(m => m.month === month);
             return meter && meter.oldValue !== '' ? Number(meter.oldValue) : null;
         });
-        // Also get the newValue of last month that has data (= chỉ số cuối cùng)
         const lastMeterWithNew = roomMeters.find(m => m.newValue !== '' && m.newValue != null);
         const lastMonthIdx = lastMeterWithNew ? months.indexOf(lastMeterWithNew.month) : -1;
-        if (lastMonthIdx >= 0 && lastMonthIdx + 1 < 12) {
-            // newValue of month X = reading of month X+1
-            if (readings[lastMonthIdx + 1] === null) {
-                readings[lastMonthIdx + 1] = Number(lastMeterWithNew.newValue);
-            }
+        if (lastMonthIdx >= 0 && lastMonthIdx + 1 < 12 && readings[lastMonthIdx + 1] === null) {
+            readings[lastMonthIdx + 1] = Number(lastMeterWithNew.newValue);
         }
-
         let totalKwh = 0;
-        html += `<tr><td class="room-name">${room.name}</td>`;
-        months.forEach((month, i) => {
+        const cells = months.map((_, i) => {
             const val = readings[i];
             const prev = i > 0 ? readings[i - 1] : null;
             const kwh = (val !== null && prev !== null) ? Math.max(0, val - prev) : null;
             if (kwh !== null) totalKwh += kwh;
-            html += `<td>${val !== null ? val : ''}${kwh !== null ? `<br><span class="kwh">${kwh}</span>` : ''}</td>`;
+            return { val, kwh };
         });
-        html += `<td class="kwh">${totalKwh > 0 ? totalKwh : ''}</td></tr>`;
+        return { name: room.name, cells, totalKwh };
     });
 
-    html += `</table></body></html>`;
+    // Canvas table drawing
+    const colW = 70, rowH = 48, nameW = 100, totalW = 70;
+    const cols = months.length;
+    const headerH = 36;
+    const titleH = 50;
+    const W = nameW + cols * colW + totalW + 2;
+    const H = titleH + headerH + dataRows.length * rowH + 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
 
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `so-dien-${year}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Đã tải file bảng số điện');
+    // Background
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+
+    // Title
+    ctx.fillStyle = '#333'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center';
+    ctx.fillText(`⚡ Bảng số điện năm ${year}`, W / 2, 32);
+
+    const startY = titleH;
+    ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
+    ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+
+    // Header
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, startY, W, headerH);
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Phòng', nameW / 2, startY + 22);
+    for (let i = 0; i < cols; i++) ctx.fillText('T' + (i + 1), nameW + i * colW + colW / 2, startY + 22);
+    ctx.fillText('Tổng', nameW + cols * colW + totalW / 2, startY + 22);
+
+    // Rows
+    dataRows.forEach((row, ri) => {
+        const y = startY + headerH + ri * rowH;
+        ctx.fillStyle = ri % 2 === 0 ? '#f8f8f8' : '#fff';
+        ctx.fillRect(0, y, W, rowH);
+
+        // Room name
+        ctx.fillStyle = '#222'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left';
+        ctx.fillText(row.name, 8, y + 20);
+
+        // Month cells
+        row.cells.forEach((cell, ci) => {
+            const cx = nameW + ci * colW + colW / 2;
+            if (cell.val !== null) {
+                ctx.fillStyle = '#444'; ctx.font = '11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(String(cell.val), cx, y + 18);
+            }
+            if (cell.kwh !== null) {
+                ctx.fillStyle = '#e74c3c'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(String(cell.kwh), cx, y + 36);
+            }
+        });
+
+        // Total
+        if (row.totalKwh > 0) {
+            ctx.fillStyle = '#e74c3c'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
+            ctx.fillText(String(row.totalKwh), nameW + cols * colW + totalW / 2, y + 26);
+        }
+    });
+
+    // Grid lines
+    ctx.strokeStyle = '#ccc'; ctx.lineWidth = 0.5;
+    for (let i = 0; i <= dataRows.length; i++) {
+        const y = startY + headerH + i * rowH;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    for (let i = 0; i <= cols + 2; i++) {
+        const x = i === 0 ? 0 : i === 1 ? nameW : i <= cols + 1 ? nameW + (i - 1) * colW : W;
+        ctx.beginPath(); ctx.moveTo(x, startY); ctx.lineTo(x, H); ctx.stroke();
+    }
+
+    downloadCanvasPng(canvas, `so-dien-${year}.png`);
+    showToast('Đã tải ảnh bảng số điện');
 }
 
 // ===== Export All Bills =====
@@ -941,49 +982,96 @@ async function exportAllBills() {
     }
 
     const fmt = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
+    const headers = ['Phòng', 'Người thuê', 'Tiền phòng', 'Nước', 'Điện', 'Tổng'];
+    const colWidths = [120, 140, 120, 120, 120, 130];
+    const rowH = 36, headerH = 36, titleH = 50;
+    const W = colWidths.reduce((a, b) => a + b, 0) + 2;
+    const H = titleH + headerH + billRooms.length * rowH + rowH + 2; // +1 for total row
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+
+    // Title
+    ctx.fillStyle = '#333'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center';
+    ctx.fillText('💰 Tổng hợp tiền phòng', W / 2, 32);
+
+    const startY = titleH;
+
+    // Header
+    ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, startY, W, headerH);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Arial';
+    let hx = 0;
+    headers.forEach((h, i) => {
+        ctx.textAlign = i < 2 ? 'left' : 'right';
+        const tx = i < 2 ? hx + 8 : hx + colWidths[i] - 8;
+        ctx.fillText(h, tx, startY + 22);
+        hx += colWidths[i];
+    });
+
+    // Data rows
     let grandTotal = 0;
-
-    let html = `<html><head><meta charset="UTF-8"><title>Tổng hợp tiền phòng</title>
-    <style>
-        body { font-family: Arial, sans-serif; padding: 16px; }
-        h2 { text-align: center; }
-        table { border-collapse: collapse; width: 100%; font-size: 13px; }
-        th, td { border: 1px solid #333; padding: 6px 8px; text-align: right; }
-        th { background: #1a1a2e; color: #fff; }
-        tr:nth-child(even) { background: #f5f5f5; }
-        .left { text-align: left; }
-        .total-row { font-weight: bold; background: #e8e8e8 !important; }
-    </style></head><body>
-    <h2>💰 Tổng hợp tiền phòng</h2>
-    <table>
-        <tr><th class="left">Phòng</th><th class="left">Người thuê</th><th>Tiền phòng</th><th>Nước</th><th>Điện</th><th>Tổng</th></tr>`;
-
-    billRooms.forEach(room => {
+    billRooms.forEach((room, ri) => {
+        const y = startY + headerH + ri * rowH;
         const tenant = tenantMap[room.id];
         const d = room.lastBillDetails || {};
         const roomCost = d.roomCost || (room.price || 0) * 1000;
-        html += `<tr>
-            <td class="left">${room.name}${room.lastBillMonth ? ' (T' + room.lastBillMonth + ')' : ''}</td>
-            <td class="left">${tenant ? tenant.name : '—'}</td>
-            <td>${fmt(roomCost)}</td>
-            <td>${d.waterCost !== undefined ? fmt(d.waterCost) : '—'}</td>
-            <td>${d.electricCost !== undefined ? fmt(d.electricCost) : '—'}</td>
-            <td><strong>${fmt(room.lastBill)}</strong></td>
-        </tr>`;
         grandTotal += room.lastBill;
+
+        ctx.fillStyle = ri % 2 === 0 ? '#f8f8f8' : '#fff';
+        ctx.fillRect(0, y, W, rowH);
+
+        const vals = [
+            room.name + (room.lastBillMonth ? ' (T' + room.lastBillMonth + ')' : ''),
+            tenant ? tenant.name : '—',
+            fmt(roomCost),
+            d.waterCost !== undefined ? fmt(d.waterCost) : '—',
+            d.electricCost !== undefined ? fmt(d.electricCost) : '—',
+            fmt(room.lastBill)
+        ];
+
+        let x = 0;
+        vals.forEach((v, i) => {
+            ctx.fillStyle = i === 5 ? '#e94560' : '#333';
+            ctx.font = i === 5 ? 'bold 12px Arial' : '12px Arial';
+            ctx.textAlign = i < 2 ? 'left' : 'right';
+            const tx = i < 2 ? x + 8 : x + colWidths[i] - 8;
+            ctx.fillText(v, tx, y + 22);
+            x += colWidths[i];
+        });
     });
 
-    html += `<tr class="total-row"><td class="left" colspan="5">TỔNG CỘNG</td><td>${fmt(grandTotal)}</td></tr>`;
-    html += `</table></body></html>`;
+    // Total row
+    const ty = startY + headerH + billRooms.length * rowH;
+    ctx.fillStyle = '#e8e8e8'; ctx.fillRect(0, ty, W, rowH);
+    ctx.fillStyle = '#222'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'left';
+    ctx.fillText('TỔNG CỘNG', 8, ty + 22);
+    ctx.fillStyle = '#e94560'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'right';
+    ctx.fillText(fmt(grandTotal), W - 8, ty + 22);
 
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tong-hop-tien-phong.html`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Đã tải file tổng hợp');
+    // Grid lines
+    ctx.strokeStyle = '#ccc'; ctx.lineWidth = 0.5;
+    for (let i = 0; i <= billRooms.length + 1; i++) {
+        const y = startY + headerH + i * rowH;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    let lx = 0;
+    for (let i = 0; i <= headers.length; i++) {
+        ctx.beginPath(); ctx.moveTo(lx, startY); ctx.lineTo(lx, H); ctx.stroke();
+        lx += colWidths[i] || 0;
+    }
+
+    downloadCanvasPng(canvas, 'tong-hop-tien-phong.png');
+    showToast('Đã tải ảnh tổng hợp');
+}
+
+function downloadCanvasPng(canvas, filename) {
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
 }
 
 function shareOrCopy(text, toastMsg) {
