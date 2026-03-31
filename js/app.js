@@ -894,13 +894,22 @@ function exportElectricTable(sortedRooms, meterMap, billMonth) {
         return { name: room.name, cells, totalKwh };
     });
 
+    // Compute monthly totals across all rooms
+    const monthTotals = months.map((_, i) => {
+        let sum = 0;
+        dataRows.forEach(row => { if (row.cells[i].kwh !== null) sum += row.cells[i].kwh; });
+        return sum;
+    });
+    const grandTotalKwh = monthTotals.reduce((a, b) => a + b, 0);
+
     // Canvas table drawing
     const colW = 70, rowH = 48, nameW = 100, totalW = 70;
     const cols = months.length;
     const headerH = 36;
     const titleH = 50;
+    const totalRowH = 36;
     const W = nameW + cols * colW + totalW + 2;
-    const H = titleH + headerH + dataRows.length * rowH + 2;
+    const H = titleH + headerH + dataRows.length * rowH + totalRowH + 2;
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
@@ -954,12 +963,31 @@ function exportElectricTable(sortedRooms, meterMap, billMonth) {
         }
     });
 
+    // Total row
+    const ty = startY + headerH + dataRows.length * rowH;
+    ctx.fillStyle = '#e8e8e8'; ctx.fillRect(0, ty, W, totalRowH);
+    ctx.fillStyle = '#222'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left';
+    ctx.fillText('TỔNG', 8, ty + 22);
+    months.forEach((_, i) => {
+        if (monthTotals[i] > 0) {
+            ctx.fillStyle = '#e74c3c'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+            ctx.fillText(String(monthTotals[i]), nameW + i * colW + colW / 2, ty + 22);
+        }
+    });
+    if (grandTotalKwh > 0) {
+        ctx.fillStyle = '#e74c3c'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
+        ctx.fillText(String(grandTotalKwh), nameW + cols * colW + totalW / 2, ty + 22);
+    }
+
     // Grid lines
     ctx.strokeStyle = '#ccc'; ctx.lineWidth = 0.5;
-    for (let i = 0; i <= dataRows.length; i++) {
-        const y = startY + headerH + i * rowH;
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    for (let i = 0; i <= dataRows.length + 1; i++) {
+        const y = startY + headerH + i * (i <= dataRows.length ? rowH : 0);
+        if (i <= dataRows.length) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
     }
+    // Total row borders
+    ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(W, ty); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, ty + totalRowH); ctx.lineTo(W, ty + totalRowH); ctx.stroke();
     for (let i = 0; i <= cols + 2; i++) {
         const x = i === 0 ? 0 : i === 1 ? nameW : i <= cols + 1 ? nameW + (i - 1) * colW : W;
         ctx.beginPath(); ctx.moveTo(x, startY); ctx.lineTo(x, H); ctx.stroke();
