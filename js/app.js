@@ -458,7 +458,7 @@ async function exportBill(roomId) {
     if (tenant) text += `👤 ${tenant.name}\n`;
     text += `---\n`;
     text += `🏠 Tiền phòng: ${fmt(d.roomCost || (room.price || 0) * 1000)}\n`;
-    if (d.waterCost !== undefined) text += `💧 Tiền nước: ${fmt(d.waterCost)} (${d.people} người × ${fmt(d.waterPrice)})\n`;
+    if (d.waterCost !== undefined) text += `💧 Tiền nước: ${fmt(d.waterCost)} (${d.people} người × ${fmt(d.waterPrice * 1000)})\n`;
     if (d.electricCost !== undefined) text += `⚡ Tiền điện: ${fmt(d.electricCost)} (${d.kwh} kWh × ${fmt(d.electricPrice)})\n`;
     text += `---\n`;
     text += `💰 Tổng cộng: ${fmt(room.lastBill)}`;
