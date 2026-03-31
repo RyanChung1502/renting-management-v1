@@ -981,9 +981,14 @@ async function exportAllBills() {
         return;
     }
 
-    const fmt = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
-    const headers = ['Phòng', 'Người thuê', 'Tiền phòng', 'Nước', 'Điện', 'Tổng'];
-    const colWidths = [120, 140, 120, 120, 120, 130];
+    const fmtShort = (n) => {
+        n = Number(n);
+        if (n >= 1000000) return (n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1) + 'tr';
+        if (n >= 1000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'K';
+        return String(n);
+    };
+    const headers = ['Phòng', 'Người thuê', 'Phòng', 'Nước', 'Điện', 'Tổng'];
+    const colWidths = [110, 110, 80, 70, 70, 80];
     const rowH = 36, headerH = 36, titleH = 50;
     const W = colWidths.reduce((a, b) => a + b, 0) + 2;
     const H = titleH + headerH + billRooms.length * rowH + rowH + 2; // +1 for total row
@@ -1026,10 +1031,10 @@ async function exportAllBills() {
         const vals = [
             room.name + (room.lastBillMonth ? ' (T' + room.lastBillMonth + ')' : ''),
             tenant ? tenant.name : '—',
-            fmt(roomCost),
-            d.waterCost !== undefined ? fmt(d.waterCost) : '—',
-            d.electricCost !== undefined ? fmt(d.electricCost) : '—',
-            fmt(room.lastBill)
+            fmtShort(roomCost),
+            d.waterCost !== undefined ? fmtShort(d.waterCost) : '—',
+            d.electricCost !== undefined ? fmtShort(d.electricCost) : '—',
+            fmtShort(room.lastBill)
         ];
 
         let x = 0;
@@ -1049,7 +1054,7 @@ async function exportAllBills() {
     ctx.fillStyle = '#222'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'left';
     ctx.fillText('TỔNG CỘNG', 8, ty + 22);
     ctx.fillStyle = '#e94560'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'right';
-    ctx.fillText(fmt(grandTotal), W - 8, ty + 22);
+    ctx.fillText(fmtShort(grandTotal), W - 8, ty + 22);
 
     // Grid lines
     ctx.strokeStyle = '#ccc'; ctx.lineWidth = 0.5;
