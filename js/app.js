@@ -983,12 +983,11 @@ async function exportAllBills() {
 
     const fmtShort = (n) => {
         n = Number(n);
-        if (n >= 1000000) return (n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1) + 'tr';
-        if (n >= 1000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'K';
+        if (n >= 1000) { const k = n / 1000; return (k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)) + 'K'; }
         return String(n);
     };
     const headers = ['Phòng', 'Người thuê', 'Phòng', 'Nước', 'Điện', 'Tổng'];
-    const colWidths = [110, 110, 80, 70, 70, 80];
+    const colWidths = [110, 90, 65, 55, 55, 75];
     const rowH = 36, headerH = 36, titleH = 50;
     const W = colWidths.reduce((a, b) => a + b, 0) + 2;
     const H = titleH + headerH + billRooms.length * rowH + rowH + 2; // +1 for total row
