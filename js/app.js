@@ -274,7 +274,8 @@ async function renderRoomList() {
         return;
     }
 
-    mainContent.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:8px;padding:0 4px">
+    mainContent.innerHTML = `<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px;padding:0 4px">
+        <button class="btn-bill" onclick="calculateAllBills()" style="flex:none;padding:6px 14px;font-size:0.9rem">Tính tất cả</button>
         <button class="btn-bill btn-export" onclick="exportAllBills()" style="flex:none;padding:6px 14px;font-size:0.9rem">Xuất tổng hợp</button>
     </div><div class="room-list">${filtered.map(room => {
         const tenant = tenantMap[room.id];
@@ -966,6 +967,41 @@ function exportElectricTable(sortedRooms, meterMap, billMonth) {
 
     downloadCanvasPng(canvas, `so-dien-${year}.png`);
     showToast('Đã tải ảnh bảng số điện');
+}
+
+// ===== Calculate All Bills =====
+async function calculateAllBills() {
+    const rooms = await db.getAllRooms();
+    const electricPrice = await db.getSetting('electricPrice') || 0;
+    const waterPrice = await db.getSetting('waterPrice') || 0;
+    const billMonth = getBillMonth();
+    const currentMonth = `${billMonth.month}/${billMonth.year}`;
+
+    let count = 0;
+    for (const room of rooms) {
+        if (room.status !== 'occupied') continue;
+
+        const people = room.people || 0;
+        const roomMeters = await db.getMetersByRoom(room.id);
+        const currentMeter = roomMeters.find(m => m.month === currentMonth);
+        const elecOld = currentMeter ? currentMeter.oldValue : (room.electricOld ?? '');
+        const elecNew = currentMeter ? currentMeter.newValue : (room.electricNew ?? '');
+        const kwh = (elecOld !== '' && elecNew !== '') ? Math.max(0, Number(elecNew) - Number(elecOld)) : 0;
+
+        const roomCost = (room.price || 0) * 1000;
+        const waterCost = people * waterPrice * 1000;
+        const electricCost = kwh * electricPrice;
+        const total = roomCost + waterCost + electricCost;
+
+        room.lastBill = total;
+        room.lastBillMonth = currentMonth;
+        room.lastBillDetails = { people, kwh, roomCost, waterCost, electricCost, electricPrice, waterPrice };
+        await db.saveRoom(room);
+        count++;
+    }
+
+    showToast(`Đã tính tiền ${count} phòng`);
+    renderPage();
 }
 
 // ===== Export All Bills =====
