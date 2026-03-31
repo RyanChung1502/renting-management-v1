@@ -1,6 +1,6 @@
 // ===== IndexedDB Database Layer =====
 const DB_NAME = 'RentMgrDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 class Database {
     constructor() {
@@ -32,6 +32,13 @@ class Database {
                     tenantStore.createIndex('name', 'name', { unique: false });
                     tenantStore.createIndex('roomId', 'roomId', { unique: false });
                     tenantStore.createIndex('phone', 'phone', { unique: false });
+                }
+
+                // Electric meters store (v3)
+                if (!db.objectStoreNames.contains('electricMeters')) {
+                    const meterStore = db.createObjectStore('electricMeters', { keyPath: 'id' });
+                    meterStore.createIndex('roomId', 'roomId', { unique: false });
+                    meterStore.createIndex('month', 'month', { unique: false });
                 }
             };
 
@@ -154,6 +161,29 @@ class Database {
         return this.delete('tenants', id);
     }
 
+    // ===== Electric Meter Operations =====
+
+    async getAllMeters() {
+        return this.getAll('electricMeters');
+    }
+
+    async getMetersByRoom(roomId) {
+        return this.getByIndex('electricMeters', 'roomId', roomId);
+    }
+
+    async saveMeter(meter) {
+        if (!meter.id) {
+            meter.id = 'meter_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+            meter.createdAt = new Date().toISOString();
+        }
+        meter.updatedAt = new Date().toISOString();
+        return this.put('electricMeters', meter);
+    }
+
+    async deleteMeter(id) {
+        return this.delete('electricMeters', id);
+    }
+
     // ===== Settings Operations =====
 
     async getSetting(key) {
@@ -175,40 +205,39 @@ class Database {
         const rooms = await this.getAllRooms();
         const tenants = await this.getAllTenants();
         const settings = await this.getAllSettings();
+        const electricMeters = await this.getAllMeters();
         return {
             version: DB_VERSION,
             exportedAt: new Date().toISOString(),
-            data: { rooms, tenants, settings }
+            data: { rooms, tenants, settings, electricMeters }
         };
     }
 
     async importAll(backup) {
-        const { rooms, tenants, settings } = backup.data;
+        const { rooms, tenants, settings, electricMeters } = backup.data;
 
         // Clear existing data
-        const txRooms = this.db.transaction('rooms', 'readwrite');
-        txRooms.objectStore('rooms').clear();
-        await new Promise((resolve) => { txRooms.oncomplete = resolve; });
-
-        const txTenants = this.db.transaction('tenants', 'readwrite');
-        txTenants.objectStore('tenants').clear();
-        await new Promise((resolve) => { txTenants.oncomplete = resolve; });
-
-        const txSettings = this.db.transaction('settings', 'readwrite');
-        txSettings.objectStore('settings').clear();
-        await new Promise((resolve) => { txSettings.oncomplete = resolve; });
+        const stores = ['rooms', 'tenants', 'settings', 'electricMeters'];
+        for (const name of stores) {
+            if (this.db.objectStoreNames.contains(name)) {
+                const tx = this.db.transaction(name, 'readwrite');
+                tx.objectStore(name).clear();
+                await new Promise((resolve) => { tx.oncomplete = resolve; });
+            }
+        }
 
         // Import new data
-        for (const room of rooms) {
+        for (const room of (rooms || [])) {
             await this.put('rooms', room);
         }
-        for (const tenant of tenants) {
+        for (const tenant of (tenants || [])) {
             await this.put('tenants', tenant);
         }
-        if (settings) {
-            for (const setting of settings) {
-                await this.put('settings', setting);
-            }
+        for (const setting of (settings || [])) {
+            await this.put('settings', setting);
+        }
+        for (const meter of (electricMeters || [])) {
+            await this.put('electricMeters', meter);
         }
     }
 }

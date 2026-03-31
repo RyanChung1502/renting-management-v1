@@ -197,6 +197,11 @@ function renderPage() {
             fab.classList.remove('hidden');
             renderTenantList();
             break;
+        case 'electric':
+            pageTitle.textContent = 'Số điện';
+            fab.classList.add('hidden');
+            renderElectricPage();
+            break;
         case 'settings':
             pageTitle.textContent = 'Cài đặt';
             fab.classList.add('hidden');
@@ -755,6 +760,109 @@ async function deleteTenant(tenantId) {
     speak('Đã xóa người thuê', 'Tenant deleted');
     closeModal();
     renderPage();
+}
+
+// ===== Electric Meter Page =====
+async function renderElectricPage() {
+    const rooms = await db.getAllRooms();
+    const meters = await db.getAllMeters();
+    const billMonth = getBillMonth();
+    const currentMonth = `${billMonth.month}/${billMonth.year}`;
+
+    // Build meter map: roomId -> sorted meters (newest first)
+    const meterMap = {};
+    meters.forEach(m => {
+        if (!meterMap[m.roomId]) meterMap[m.roomId] = [];
+        meterMap[m.roomId].push(m);
+    });
+    // Sort each room's meters by month descending
+    Object.values(meterMap).forEach(arr => arr.sort((a, b) => {
+        const [am, ay] = a.month.split('/').map(Number);
+        const [bm, by] = b.month.split('/').map(Number);
+        return by !== ay ? by - ay : bm - am;
+    }));
+
+    const sortedRooms = rooms.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'));
+
+    mainContent.innerHTML = `
+        <div class="electric-page">
+            <p style="color:var(--text-secondary);margin-bottom:12px">Tháng hiện tại: <strong>${currentMonth}</strong></p>
+            ${sortedRooms.length === 0 ? '<p style="text-align:center;color:var(--text-secondary)">Chưa có phòng nào</p>' :
+            sortedRooms.map(room => {
+                const roomMeters = meterMap[room.id] || [];
+                const currentMeter = roomMeters.find(m => m.month === currentMonth);
+                const prevMeter = roomMeters.find(m => m.month !== currentMonth);
+                const oldVal = currentMeter ? currentMeter.oldValue : (prevMeter ? prevMeter.newValue : '');
+                const newVal = currentMeter ? currentMeter.newValue : '';
+                const kwh = (oldVal !== '' && newVal !== '') ? Math.max(0, Number(newVal) - Number(oldVal)) : null;
+
+                return `
+                <div class="electric-card">
+                    <div class="electric-card-header">
+                        <span class="room-name">${room.name}</span>
+                        ${kwh !== null ? `<span class="electric-kwh">${kwh} kWh</span>` : ''}
+                    </div>
+                    <div class="electric-inputs">
+                        <div class="form-group" style="flex:1;margin:0">
+                            <label>Số cũ</label>
+                            <input type="number" class="elec-old" data-room="${room.id}" value="${oldVal}" placeholder="Kỳ trước">
+                        </div>
+                        <div class="form-group" style="flex:1;margin:0">
+                            <label>Số mới</label>
+                            <input type="number" class="elec-new" data-room="${room.id}" value="${newVal}" placeholder="Kỳ này">
+                        </div>
+                        <button class="btn-save-meter" data-room="${room.id}" title="Lưu">✓</button>
+                    </div>
+                    ${roomMeters.length > 0 ? `
+                    <div class="electric-history">
+                        ${roomMeters.slice(0, 6).map(m => {
+                            const used = (m.oldValue !== '' && m.newValue !== '') ? Math.max(0, Number(m.newValue) - Number(m.oldValue)) : '—';
+                            return `<div class="history-row">
+                                <span>T${m.month}</span>
+                                <span>${m.oldValue ?? '—'} → ${m.newValue ?? '—'}</span>
+                                <span>${used !== '—' ? used + ' kWh' : '—'}</span>
+                            </div>`;
+                        }).join('')}
+                    </div>` : ''}
+                </div>`;
+            }).join('')}
+        </div>`;
+
+    // Save meter handlers
+    document.querySelectorAll('.btn-save-meter').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const roomId = btn.dataset.room;
+            const card = btn.closest('.electric-card');
+            const oldValue = card.querySelector('.elec-old').value;
+            const newValue = card.querySelector('.elec-new').value;
+
+            if (oldValue === '' && newValue === '') {
+                showToast('Nhập ít nhất 1 giá trị');
+                return;
+            }
+
+            // Find or create meter for current month
+            const roomMeters = await db.getMetersByRoom(roomId);
+            let meter = roomMeters.find(m => m.month === currentMonth);
+            if (!meter) {
+                meter = { roomId, month: currentMonth };
+            }
+            meter.oldValue = oldValue !== '' ? Number(oldValue) : '';
+            meter.newValue = newValue !== '' ? Number(newValue) : '';
+            await db.saveMeter(meter);
+
+            // Also update room's electricOld/electricNew for bill form
+            const room = await db.getRoom(roomId);
+            if (room) {
+                room.electricOld = meter.oldValue;
+                room.electricNew = meter.newValue;
+                await db.saveRoom(room);
+            }
+
+            showToast('Đã lưu số điện');
+            renderElectricPage();
+        });
+    });
 }
 
 // ===== Settings Page =====

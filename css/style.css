@@ -256,6 +256,95 @@ body {
     opacity: 0.8;
 }
 
+/* ===== Electric Meter Page ===== */
+.electric-page {
+    padding: 0 4px;
+}
+
+.electric-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 10px;
+}
+
+.electric-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.electric-kwh {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.electric-inputs {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.electric-inputs input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 1rem;
+}
+
+.electric-inputs label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    display: block;
+}
+
+.btn-save-meter {
+    padding: 8px 14px;
+    border: 1px solid #2ecc71;
+    border-radius: 8px;
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+    font-size: 1.1rem;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.btn-save-meter:active {
+    opacity: 0.7;
+}
+
+.electric-history {
+    margin-top: 10px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+}
+
+.history-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.history-row span:first-child {
+    min-width: 70px;
+}
+
+.history-row span:last-child {
+    font-weight: 500;
+    color: var(--text);
+}
+
 /* ===== Tenant Cards ===== */
 .tenant-list {
     display: flex;

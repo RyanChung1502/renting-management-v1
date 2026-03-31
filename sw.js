@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rentmgr-v15';
+const CACHE_NAME = 'rentmgr-v16';
 const ASSETS = [
     './',
     './index.html',
