@@ -222,8 +222,8 @@ function formatDate(dateStr) {
     return d.toLocaleDateString('vi-VN');
 }
 
-function getContractStatus(endDate) {
-    if (!endDate) return { text: 'Không có HĐ', cls: '' };
+function getContractStatus(endDate, hasStart) {
+    if (!endDate) return hasStart ? { text: 'Không thời hạn', cls: 'active' } : { text: 'Không có HĐ', cls: '' };
     const end = new Date(endDate);
     const now = new Date();
     const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
@@ -274,7 +274,7 @@ async function renderRoomList() {
         const status = room.status || 'vacant';
         let tenantHTML = '';
         if (tenant) {
-            const contract = getContractStatus(tenant.contractEnd);
+            const contract = getContractStatus(tenant.contractEnd, tenant.contractStart);
             tenantHTML = `
                 <div class="room-tenant">
                     👤 ${tenant.name}${tenant.phone ? ' · ' + tenant.phone : ''}
@@ -292,7 +292,10 @@ async function renderRoomList() {
                     <span>Tổng: ${room.lastBill ? Number(room.lastBill).toLocaleString('vi-VN') + 'đ' : '0đ'}</span>
                 </div>
                 ${tenantHTML}
-                ${status === 'occupied' ? `<button class="btn-bill" onclick="event.stopPropagation(); showBillForm('${room.id}')">Tính tiền</button>` : ''}
+                ${status === 'occupied' ? `<div class="room-card-actions">
+                    <button class="btn-bill" onclick="event.stopPropagation(); showBillForm('${room.id}')">Tính tiền</button>
+                    ${room.lastBill ? `<button class="btn-bill btn-export" onclick="event.stopPropagation(); exportBill('${room.id}')">Xuất gửi</button>` : ''}
+                </div>` : ''}
             </div>`;
     }).join('')}</div>`;
 }
@@ -307,7 +310,7 @@ async function showRoomDetail(roomId) {
 
     let tenantHTML = '<p style="color:var(--text-secondary)">Chưa có người thuê</p>';
     if (tenant) {
-        const contract = getContractStatus(tenant.contractEnd);
+        const contract = getContractStatus(tenant.contractEnd, tenant.contractStart);
         tenantHTML = `
             <div class="detail-row"><span class="label">Tên</span><span class="value">${tenant.name}</span></div>
             <div class="detail-row"><span class="label">SĐT</span><span class="value"><a href="tel:${tenant.phone}">${tenant.phone || '—'}</a></span></div>
@@ -413,6 +416,7 @@ async function showBillForm(roomId) {
         // Save bill + meter readings; roll new → old for next cycle
         room.lastBill = total;
         room.lastBillMonth = `${billMonth.month}/${billMonth.year}`;
+        room.lastBillDetails = { people, kwh, roomCost, waterCost, electricCost, electricPrice, waterPrice };
         if (elecNewVal !== '') {
             room.electricOld = Number(elecNewVal);
             room.electricNew = null;
@@ -436,6 +440,43 @@ async function showBillForm(roomId) {
 
         speak(`Tổng cộng ${fmt(total)}`, `Total ${fmt(total)}`);
         renderPage();
+    });
+}
+
+// ===== Export Bill =====
+async function exportBill(roomId) {
+    const room = await db.getRoom(roomId);
+    if (!room || !room.lastBill) return;
+    const tenants = await db.getTenantsByRoom(roomId);
+    const tenant = tenants[0];
+    const d = room.lastBillDetails || {};
+    const fmt = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
+
+    let text = `📋 ${room.name} - Tháng ${room.lastBillMonth || '?'}\n`;
+    if (tenant) text += `👤 ${tenant.name}\n`;
+    text += `---\n`;
+    text += `🏠 Tiền phòng: ${fmt(d.roomCost || (room.price || 0) * 1000)}\n`;
+    if (d.waterCost !== undefined) text += `💧 Tiền nước: ${fmt(d.waterCost)} (${d.people} người × ${fmt(d.waterPrice)})\n`;
+    if (d.electricCost !== undefined) text += `⚡ Tiền điện: ${fmt(d.electricCost)} (${d.kwh} kWh × ${fmt(d.electricPrice)})\n`;
+    text += `---\n`;
+    text += `💰 Tổng cộng: ${fmt(room.lastBill)}`;
+
+    if (navigator.share) {
+        try {
+            await navigator.share({ text });
+        } catch (e) {
+            if (e.name !== 'AbortError') copyToClipboard(text);
+        }
+    } else {
+        copyToClipboard(text);
+    }
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('Đã sao chép hóa đơn');
+    }).catch(() => {
+        showToast('Không thể sao chép');
     });
 }
 
@@ -563,7 +604,7 @@ async function renderTenantList() {
 
     mainContent.innerHTML = `<div class="tenant-list">${filtered.map(t => {
         const room = roomMap[t.roomId];
-        const contract = getContractStatus(t.contractEnd);
+        const contract = getContractStatus(t.contractEnd, t.contractStart);
         return `
             <div class="tenant-card" onclick="showTenantDetail('${t.id}')">
                 <div class="tenant-name">${t.name}</div>
@@ -585,7 +626,7 @@ async function showTenantDetail(tenantId) {
         if (room) roomName = room.name;
     }
 
-    const contract = getContractStatus(tenant.contractEnd);
+    const contract = getContractStatus(tenant.contractEnd, tenant.contractStart);
 
     openModal(tenant.name, `
         <div class="detail-section">
