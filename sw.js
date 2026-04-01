@@ -1,9 +1,20 @@
-const CACHE_NAME = 'rentmgr-v25';
+const CACHE_NAME = 'rentmgr-v26';
 const ASSETS = [
     './',
     './index.html',
     './css/style.css',
     './js/db.js',
+    './js/state.js',
+    './js/helpers.js',
+    './js/voice.js',
+    './js/ui.js',
+    './js/billing.js',
+    './js/canvas-export.js',
+    './js/pages/rooms.js',
+    './js/pages/tenants.js',
+    './js/pages/electric.js',
+    './js/pages/settings.js',
+    './js/pages/backup.js',
     './js/app.js',
     './manifest.json'
 ];

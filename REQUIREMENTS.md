@@ -13,7 +13,7 @@
 - [x] **Room-Tenant Linking** — Mỗi phòng liên kết 1 người thuê; thêm người thuê tự chuyển phòng sang "occupied", xóa thì tự reset về "vacant"
 - [x] **Contract Tracking** — Hiển thị trạng thái hợp đồng: còn hiệu lực, sắp hết hạn (≤30 ngày), đã hết hạn
 - [x] **Bill Calculation** — Tính tiền hàng tháng gồm tiền phòng + điện + nước; lưu vào phòng, hiển thị trên card
-- [x] **Electricity Meter Readings** — Lưu số điện cũ/mới trên phòng; tự tính kWh = mới - cũ; sau khi tính xong tự cuộn số
+- [x] **Electricity Meter Readings** — Nhập số điện theo từng tháng trong năm cho mỗi phòng; kWh = số tháng này - số tháng trước
 - [x] **Bill Image Export** — Xuất hóa đơn ra file JPEG (Canvas API) để gửi cho người thuê
 - [x] **Search** — Lọc phòng/người thuê theo tên, SĐT, tên phòng
 - [x] **Backup/Restore** — Xuất toàn bộ dữ liệu ra file JSON, nhập lại từ JSON (ghi đè dữ liệu cũ)
@@ -51,8 +51,8 @@
 | 11 | **Settings-driven billing** | Giá điện/nước cài global, dùng chung cho tất cả phòng |
 | 12 | **Bill saved per room** | Lưu `lastBill` + `lastBillMonth` vào phòng để hiển thị lại mà không cần tính lại |
 | 13 | **Auto month detection** | Nếu ngày ≥ 25 hoặc ≤ 5 → tháng hiện tại; còn lại → tháng trước |
-| 14 | **Meter readings on room** | `electricOld` / `electricNew` lưu trên phòng; kWh tính tự động, không cho nhập tay |
-| 15 | **Meter roll-over after billing** | Sau khi tính tiền: electricNew → electricOld, electricNew = null; kỳ sau chỉ cần nhập số mới |
+| 14 | **Monthly meter readings** | Mỗi phòng nhập 1 số điện/tháng (T1-T12); kWh = tháng này - tháng trước; không còn old/new |
+| 15 | **Bill month selector** | Tính tiền mặc định tháng hiện tại, có input để chọn tháng/năm khác |
 | 16 | **Water price in 1000đ** | Đơn vị giá nước là 1000đ/người (giống giá phòng/đặt cọc) để nhập số nhỏ hơn |
 | 17 | **Bill export as JPEG** | Dùng Canvas API vẽ hóa đơn, xuất JPEG — không cần thư viện ngoài, hoạt động offline |
 
@@ -67,8 +67,6 @@ name          string    Tên phòng (bắt buộc)
 price         number    Giá thuê (đơn vị 1000đ)
 deposit       number    Tiền đặt cọc (đơn vị 1000đ)
 status        string    'occupied' | 'vacant'
-electricOld   number    Chỉ số điện kỳ trước
-electricNew   number    Chỉ số điện kỳ này (null sau khi đã tính tiền)
 lastBill      number    Tổng tiền lần tính gần nhất (VNĐ)
 lastBillMonth string    Tháng tính tiền (VD: "3/2026")
 createdAt     string    ISO date
@@ -84,6 +82,16 @@ idNumber      string    Số CCCD/CMND
 roomId        string    Foreign key → Room
 contractStart string    ISO date
 contractEnd   string    ISO date
+createdAt     string    ISO date
+updatedAt     string    ISO date
+```
+
+### ElectricMeter
+```
+id            string    Auto-generated (meter_<timestamp>_<random>)
+roomId        string    Foreign key → Room
+month         string    "M/YYYY" (VD: "3/2026")
+value         number    Chỉ số điện đầu tháng đó
 createdAt     string    ISO date
 updatedAt     string    ISO date
 ```

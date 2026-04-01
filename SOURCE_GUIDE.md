@@ -7,372 +7,250 @@ Hướng dẫn đọc và hiểu mã nguồn cho dự án **RentMgr**.
 ## Cấu trúc thư mục
 
 ```
-renting-management-v1/
-├── index.html          # Entry point — HTML skeleton + khởi động app
-├── manifest.json       # PWA config (tên app, icon, màu theme)
-├── sw.js               # Service Worker — cache offline
+rent-management/
+├── index.html              # Entry point — HTML skeleton + khởi động app
+├── manifest.json           # PWA config (tên app, icon, màu theme)
+├── sw.js                   # Service Worker — cache offline
 │
 ├── css/
-│   └── style.css       # Toàn bộ styling (~605 dòng)
+│   └── style.css           # Toàn bộ styling (~710 dòng)
 │
 ├── js/
-│   ├── db.js           # Database layer — wrapper cho IndexedDB (~216 dòng)
-│   └── app.js          # Application logic — toàn bộ UI + business logic (~950 dòng)
+│   ├── app.js              # Entry point — init, routing, event listeners (~148 dòng)
+│   ├── state.js            # Shared state (currentPage, searchQuery, voiceEnabled)
+│   ├── helpers.js           # Utility functions (format, $, toast, kWh calc)
+│   ├── voice.js            # Text-to-Speech (Web Speech API)
+│   ├── ui.js               # Modal, menu, share/copy
+│   ├── billing.js          # Tính tiền + xuất text hóa đơn
+│   ├── canvas-export.js    # Xuất ảnh (bảng điện, tổng hợp tiền, hóa đơn)
+│   ├── db.js               # Database layer — IndexedDB wrapper (~246 dòng)
+│   └── pages/
+│       ├── rooms.js        # CRUD phòng (list, detail, form, delete)
+│       ├── tenants.js      # CRUD người thuê
+│       ├── electric.js     # Trang nhập số điện theo tháng
+│       ├── settings.js     # Trang cài đặt
+│       └── backup.js       # Trang sao lưu / khôi phục
 │
-├── icon-192.png        # Icon PWA 192x192
-├── icon-512.png        # Icon PWA 512x512
-├── qr-code.png         # QR code app
-├── REQUIREMENTS.md     # Yêu cầu + quyết định thiết kế
-└── SOURCE_GUIDE.md     # File này
+├── icon-192.png            # Icon PWA 192x192
+├── icon-512.png            # Icon PWA 512x512
+├── qr-code.png             # QR code app
+├── REQUIREMENTS.md         # Yêu cầu + quyết định thiết kế
+└── SOURCE_GUIDE.md         # File này
 ```
 
 ---
 
-## index.html
+## Kiến trúc ES Modules
 
-File HTML tối giản — chỉ chứa skeleton, không có nội dung động.
+App dùng ES modules (`import`/`export`). `index.html` chỉ có 1 script tag:
 
-**Vai trò:**
-- Load CSS và JS
-- Đăng ký Service Worker cho PWA
-- Cung cấp các container HTML cố định (header, main, menu, modals)
-
-**Cấu trúc HTML chính:**
+```html
+<script type="module" src="js/app.js"></script>
 ```
-<header>        — Thanh tiêu đề cố định (title + action buttons)
-<div#search-bar>— Thanh tìm kiếm (ẩn/hiện toggle)
-<main>          — Vùng nội dung chính (render bởi app.js)
-<div#menu>      — Side menu (slide từ trái)
-<div#overlay>   — Overlay khi mở menu/modal
+
+### Dependency graph
+
 ```
+app.js (entry point)
+├── state.js
+├── helpers.js
+├── voice.js
+├── ui.js
+├── db.js
+├── pages/rooms.js
+│   ├── billing.js
+│   │   ├── canvas-export.js
+│   │   └── ui.js
+│   └── pages/tenants.js (dynamic import)
+├── pages/tenants.js
+├── pages/electric.js
+│   └── canvas-export.js
+├── pages/settings.js
+└── pages/backup.js
+```
+
+**Tránh circular dependency:** `renderPage()` được lưu vào `state.renderPage` bởi `app.js`, các module khác gọi `state.renderPage()` thay vì import trực tiếp.
+
+---
+
+## js/state.js — Shared State
+
+```javascript
+const state = {
+    currentPage: 'rooms',      // Trang đang hiển thị
+    searchQuery: '',            // Từ khóa tìm kiếm
+    voiceEnabled: false,        // Bật/tắt giọng nói
+    renderPage: null,           // Set bởi app.js khi init
+};
+```
+
+---
+
+## js/helpers.js — Utilities
+
+| Function | Mô tả |
+|----------|-------|
+| `$(sel)` | `document.querySelector(sel)` shorthand |
+| `showToast(msg)` | Toast notification 2.5s |
+| `formatCurrency(amount)` | Format VNĐ (đơn vị 1000đ → "3.000.000đ") |
+| `formatDate(dateStr)` | Format ngày tiếng Việt |
+| `getContractStatus(endDate, hasStart)` | Trạng thái hợp đồng (active/expiring/expired) |
+| `getBillMonth()` | Auto-detect tháng tính tiền (>=25 hoặc <=5 → tháng này, còn lại → tháng trước) |
+| `getPrevMonth(monthKey)` | "3/2026" → "2/2026", "1/2026" → "12/2025" |
+| `getKwhForMonth(meters, monthKey)` | Tính kWh = reading[tháng] - reading[tháng trước] |
 
 ---
 
 ## js/db.js — Database Layer
 
-Wrapper class cho IndexedDB. Toàn bộ code khác chỉ gọi qua class này, không động trực tiếp vào IndexedDB.
+Wrapper class cho IndexedDB. Toàn bộ code khác chỉ gọi qua class này.
 
 ### Database schema
-- **Tên DB:** `RentMgrDB` (version 2)
+- **Tên DB:** `RentMgrDB` (version 3)
 - **Object stores:**
 
 | Store | Key | Index |
 |-------|-----|-------|
 | `rooms` | `id` | `name`, `status` |
 | `tenants` | `id` | `name`, `roomId`, `phone` |
+| `electricMeters` | `id` | `roomId`, `month` |
 | `settings` | `key` | — |
 
-### Khởi tạo
-```javascript
-const db = new Database();
-await db.init();  // Mở IndexedDB, tạo stores nếu chưa có
-```
+### API chính
 
-### CRUD chung
 ```javascript
-db.getAll(storeName)              // Lấy tất cả records
-db.getById(storeName, id)         // Lấy 1 record theo primary key
-db.put(storeName, data)           // Insert hoặc Update
-db.delete(storeName, id)          // Xóa record
-db.getByIndex(store, index, val)  // Query theo index
-```
+// Rooms
+db.getAllRooms() / db.getRoom(id) / db.saveRoom(room) / db.deleteRoom(id)
 
-### Room operations
-```javascript
-db.getAllRooms()          // Lấy tất cả phòng
-db.getRoom(id)           // Lấy 1 phòng
-db.saveRoom(room)        // Lưu phòng (auto-generate id nếu mới)
-db.deleteRoom(id)        // Xóa phòng + cascade xóa người thuê
-```
+// Tenants
+db.getAllTenants() / db.getTenant(id) / db.getTenantsByRoom(roomId)
+db.saveTenant(tenant) / db.deleteTenant(id)
 
-### Tenant operations
-```javascript
-db.getAllTenants()              // Lấy tất cả người thuê
-db.getTenant(id)               // Lấy 1 người thuê
-db.getTenantsByRoom(roomId)    // Lấy người thuê theo phòng
-db.saveTenant(tenant)          // Lưu người thuê (auto-generate id)
-db.deleteTenant(id)            // Xóa người thuê
-```
+// Electric Meters
+db.getAllMeters() / db.getMetersByRoom(roomId)
+db.saveMeter(meter) / db.deleteMeter(id)
 
-### Settings operations
-```javascript
-db.getSetting(key)          // Lấy 1 setting theo key
-db.saveSetting(key, value)  // Lưu setting
-db.getAllSettings()          // Lấy tất cả settings
-```
+// Settings
+db.getSetting(key) / db.saveSetting(key, value)
 
-### Backup/Restore
-```javascript
-db.exportAll()         // Trả về object { version, exportedAt, data: {rooms, tenants, settings} }
-db.importAll(backup)   // Xóa toàn bộ data cũ, import từ backup object
-```
-
-### Auto-generate ID
-```javascript
-// Pattern: prefix_<timestamp>_<random5chars>
-// Ví dụ: room_1711234567890_a1b2c
-//        tenant_1711234567890_x9y8z
+// Backup
+db.exportAll() / db.importAll(backup)
 ```
 
 ---
 
-## js/app.js — Application Logic
+## js/app.js — Entry Point
 
-File chính chứa toàn bộ UI logic và business logic. ~815 dòng.
-
-### Global state
-```javascript
-let currentPage = 'rooms';   // Trang đang hiển thị
-let searchQuery = '';         // Từ khóa tìm kiếm hiện tại
-let voices = [];              // Danh sách voices từ Web Speech API
-```
-
-### Khởi động app
-Khi DOM load xong:
-```
-1. db.init()                    — Khởi tạo IndexedDB
-2. loadVoiceEnabled()           — Đọc setting voiceEnabled từ DB
-3. loadVoices()                 — Tải danh sách voices TTS
-4. setupEventListeners()        — Gắn toàn bộ event handlers
-5. renderPage()                 — Render trang đầu tiên (rooms)
-```
-
-### Routing
-Không có URL routing — chỉ dùng biến `currentPage`:
-```javascript
-function renderPage() {
-  switch (currentPage) {
-    case 'rooms':    renderRoomList();     break;
-    case 'tenants':  renderTenantList();   break;
-    case 'settings': renderSettingsPage(); break;
-    case 'backup':   renderBackupPage();   break;
-  }
-}
-```
-
-Chuyển trang: cập nhật `currentPage` rồi gọi `renderPage()`.
+Chỉ ~148 dòng. Vai trò:
+1. Import tất cả modules
+2. Setup event listeners (search, menu, FAB, modal, backup, refresh)
+3. Init DB + load settings
+4. Routing qua `renderPage()` → gọi render function của từng page
 
 ---
 
-### Room Management
+## js/voice.js — Text-to-Speech
 
-#### renderRoomList()
-- Lấy tất cả phòng từ DB
-- Apply filter nếu có `searchQuery`
-  - Tìm theo tên phòng
-  - Tìm theo tên người thuê (load thêm tenants)
-- Sort: phòng occupied trước, rồi sort theo tên
-- Render từng phòng thành card HTML
-
-#### Card phòng (HTML)
-```
-┌─────────────────────────────┐
-│ [Tên phòng]   [badge status]│
-│ [giá/tháng]   [tiền bill]   │
-│ [badge HĐ nếu occupied]     │
-│ [Tính tiền] [Sửa]           │
-└─────────────────────────────┘
-```
-
-#### showRoomDetail(roomId)
-- Mở modal chi tiết phòng
-- Hiển thị thông tin phòng + người thuê
-- Nút: Tính tiền, Sửa phòng, Xóa phòng
-
-#### showRoomForm(roomId?)
-- Mở form thêm/sửa phòng
-- Fields: Tên phòng*, Giá thuê, Đặt cọc, **Số điện cũ**, **Số điện mới**, Tên người thuê (quick-add)
-- Submit → `saveRoom()`
-
-#### saveRoom()
-Logic khi submit form:
-```
-1. Validate tên phòng (required)
-2. Nếu có tên người thuê:
-   - Tạo hoặc cập nhật tenant record
-   - Liên kết với roomId
-   - Set room.status = 'occupied'
-3. Nếu xóa tên người thuê (ô để trống khi edit):
-   - Xóa tenant cũ khỏi DB
-   - Set room.status = 'vacant'
-4. db.saveRoom(room)
-5. Toast + speak "Đã lưu phòng [tên]"
-6. renderPage()
-```
-
-#### deleteRoom(roomId)
-```
-1. Hiển thị modal xác nhận
-2. db.deleteRoom(id)  — cascade xóa tenant
-3. Toast + speak "Đã xóa phòng"
-4. renderPage()
+```javascript
+speak(viText, enText)  // Nói tiếng Việt, fallback tiếng Anh
+getCachedVoices()       // Lấy danh sách voices đã cache
 ```
 
 ---
 
-### Bill Calculation
+## js/ui.js — UI Components
 
-#### showBillForm(roomId)
-- Mở modal tính tiền cho phòng
-- Auto-detect tháng:
-  ```javascript
-  const day = new Date().getDate();
-  // day >= 25 hoặc day <= 5 → tháng hiện tại
-  // còn lại → tháng trước
+```javascript
+openMenu() / closeMenu()       // Side menu
+openModal(title, html) / closeModal()  // Modal dialog
+shareOrCopy(text, toastMsg)    // Web Share API, fallback clipboard
+```
+
+---
+
+## js/pages/rooms.js — Room Management
+
+### renderRoomList()
+- Lấy tất cả phòng + tenants
+- Filter theo `state.searchQuery`
+- Sort: occupied trước → theo tên
+- Render cards với event delegation (không dùng inline onclick)
+
+### showRoomDetail(roomId)
+- Modal chi tiết phòng + người thuê
+- Nút: Tính tiền, Sửa, Xóa, Sửa/Thêm người thuê
+
+### showRoomForm(roomId?)
+- Form thêm/sửa phòng
+- Fields: Tên phòng*, Giá thuê, Đặt cọc, Tên người thuê (quick-add)
+- Auto-update room status based on tenant name
+
+---
+
+## js/billing.js — Bill Calculation
+
+### showBillForm(roomId)
+- Modal tính tiền cho 1 phòng
+- **Chọn tháng:** dropdown tháng + input năm, mặc định tháng hiện tại
+- Auto-hiển thị kWh từ meter readings khi đổi tháng
+- Công thức:
   ```
-- Fields: Số người, Số điện cũ (pre-fill từ `room.electricOld`), Số điện mới (pre-fill từ `room.electricNew`)
-- kWh **không nhập tay** — tự tính: `kWh = max(0, electricNew - electricOld)`
-- Submit → tính tiền inline
+  Tiền phòng = room.price × 1000
+  Tiền nước  = sốNgười × waterPrice × 1000
+  Tiền điện  = kWh × electricPrice
+  ─────────────────────────────────
+  Tổng cộng  = phòng + nước + điện
+  ```
+- Lưu `lastBill`, `lastBillMonth`, `lastBillDetails` vào room
 
-#### Công thức tính tiền
-```
-Tiền phòng  = room.price × 1000
-Tiền nước   = soNguoi × waterPrice × 1000   ← waterPrice đơn vị 1000đ
-Tiền điện   = kWh × electricPrice
-────────────────────────────────────────
-Tổng cộng   = tiền phòng + nước + điện
-```
+### calculateAllBills()
+- Tính tiền tất cả phòng occupied cho tháng hiện tại
 
-#### Sau khi tính:
-```
-1. Lưu room.lastBill = tổng
-2. Lưu room.lastBillMonth = "M/YYYY"
-3. Cuộn số điện: room.electricOld = electricNew, room.electricNew = null
-4. db.saveRoom(room)
-5. Hiển thị breakdown + nút "Xuất ảnh hóa đơn"
-6. speak("[Tổng] đồng") nếu voice enabled
-7. renderPage()  — cập nhật card hiển thị lastBill
-```
-
-#### exportBillImage(data)
-- Vẽ hóa đơn lên Canvas 800×500
-- Nền trắng, chữ đen — dễ đọc, dễ gửi qua Zalo/Messenger
-- Nội dung: tên phòng, tháng, chi tiết 3 khoản, tổng cộng
-- Xuất file `hoadon-<tênPhòng>-T<tháng>.jpg` (JPEG 92% quality)
-- Không dùng thư viện ngoài — hoạt động offline hoàn toàn
+### exportBill(roomId)
+- Xuất text hóa đơn → Web Share / clipboard
 
 ---
 
-### Tenant Management
+## js/pages/electric.js — Electric Meter Page
 
-#### renderTenantList()
-- Lấy tất cả người thuê từ DB
-- Apply filter theo `searchQuery` (tên, SĐT, tên phòng)
-- Sort theo tên A-Z
-- Render từng người thuê thành card
-
-#### Contract Status Logic
-```javascript
-function getContractStatus(tenant) {
-  if (!contractEnd) → "Không có HĐ" (gray)
-
-  daysLeft = (contractEnd - today) / 86400000
-
-  if (daysLeft < 0)   → "Hết hạn" (red)
-  if (daysLeft ≤ 30)  → "Còn N ngày" (yellow)
-  else                → "Còn hiệu lực" (green)
-}
-```
-
-#### saveTenant()
-```
-1. Validate tên (required)
-2. Nếu có roomId mới:
-   - Set room.status = 'occupied'
-   - db.saveRoom(room)
-3. Nếu có roomId cũ khác roomId mới:
-   - Set room cũ về 'vacant'
-   - db.saveRoom(room cũ)
-4. db.saveTenant(tenant)
-5. Toast + speak "Đã lưu người thuê [tên]"
-6. renderPage()
-```
+### renderElectricPage()
+- Hiển thị tất cả phòng với **12 ô input** (T1-T12) cho năm hiện tại
+- Mỗi ô = chỉ số điện đầu tháng đó
+- kWh tự tính = số tháng này - số tháng trước
+- Ô "Số người" riêng per room
+- Nút "Lưu" per room → save tất cả readings + people count
 
 ---
 
-### Voice System (Text-to-Speech)
+## js/canvas-export.js — Image Export
 
-Dùng Web Speech API — hoạt động offline.
+### exportElectricTable(rooms, meterMap, billMonth)
+- Vẽ bảng số điện cả năm lên Canvas → PNG
+- Rows: mỗi phòng, Columns: T1-T12 + Tổng
+- Mỗi ô: chỉ số + kWh (đỏ)
 
-#### Khởi tạo
-```javascript
-function loadVoices() {
-  voices = speechSynthesis.getVoices();
-  // Lắng nghe voiceschanged event (cần thiết trên Android)
-  speechSynthesis.onvoiceschanged = () => {
-    voices = speechSynthesis.getVoices();
-  };
-}
-```
+### exportAllBills()
+- Bảng tổng hợp tiền tất cả phòng → PNG
 
-#### speak(viText, enText)
-```javascript
-function speak(viText, enText) {
-  if (!voiceEnabled) return;
-
-  speechSynthesis.cancel();  // Hủy speech đang chạy
-
-  // Tìm voice tiếng Việt
-  const viVoice = voices.find(v => v.lang.startsWith('vi'));
-
-  const utterance = new SpeechSynthesisUtterance(
-    viVoice ? viText : enText  // fallback sang tiếng Anh
-  );
-  utterance.voice = viVoice || null;
-  utterance.rate = 1;
-  utterance.volume = 1;
-
-  speechSynthesis.speak(utterance);
-}
-```
-
-#### Các sự kiện có voice:
-| Sự kiện | Tiếng Việt |
-|---------|-----------|
-| Lưu phòng | "Đã lưu phòng [tên]" |
-| Xóa phòng | "Đã xóa phòng" |
-| Lưu người thuê | "Đã lưu người thuê [tên]" |
-| Xóa người thuê | "Đã xóa người thuê" |
-| Tính tiền | "[Số tiền] đồng" |
-| Sao lưu | "Đã sao lưu" |
-| Lưu cài đặt | "Đã lưu cài đặt" |
-| Test voice | "Xin chào, đây là giọng nói của ứng dụng" |
+### exportBillImage(data)
+- Hóa đơn 1 phòng → JPEG 800×500
 
 ---
 
-### Settings Page
-
-Settings được lưu vào IndexedDB dạng key-value.
+## js/pages/settings.js — Settings
 
 | Key | Type | Mô tả |
 |-----|------|-------|
 | `voiceEnabled` | boolean | Bật/tắt giọng nói |
 | `electricPrice` | number | Giá điện (đ/kWh) |
-| `waterPrice` | number | Giá nước **(1000đ/người/tháng)** |
-
-Settings load lên form khi mở trang Settings, lưu lại khi nhấn "Lưu cài đặt".
+| `waterPrice` | number | Giá nước (1000đ/người/tháng) |
 
 ---
 
-### Backup & Restore
+## js/pages/backup.js — Backup & Restore
 
-#### Export
-```javascript
-// Quick export (header button): rentmgr-latest.json
-// Full export (backup page): rentmgr-backup-YYYY-MM-DD.json
-
-const data = await db.exportAll();
-// data = { version: 2, exportedAt: "ISO", data: { rooms, tenants, settings } }
-
-// Tạo Blob → download link → click()
-```
-
-#### Import
-```javascript
-// Đọc file JSON → parse → validate structure
-// db.importAll(backup) — xóa toàn bộ data cũ, import mới
-// DESTRUCTIVE: không thể undo
-```
+- **Export:** Tải JSON (rentmgr-backup-YYYY-MM-DD.json)
+- **Import:** Upload JSON → xóa data cũ → import mới (DESTRUCTIVE)
 
 ---
 
@@ -381,84 +259,62 @@ const data = await db.exportAll();
 ### CSS Variables (Dark Theme)
 ```css
 :root {
-  --bg-primary:    #0f0f1a;   /* Nền chính */
-  --bg-secondary:  #1a1a2e;   /* Nền phụ */
-  --bg-card:       #16213e;   /* Nền card */
-  --accent:        #e94560;   /* Màu nhấn (đỏ/hồng) */
-  --accent-light:  #ff6b81;   /* Màu nhấn sáng */
-  --success:       #2ecc71;   /* Xanh lá (vacant, active) */
-  --warning:       #f39c12;   /* Cam (sắp hết hạn) */
-  --danger:        #e74c3c;   /* Đỏ (expired, occupied) */
-  --text-primary:  #eee;
-  --text-secondary:#aaa;
+  --bg-primary:    #0f0f1a;
+  --bg-secondary:  #1a1a2e;
+  --bg-card:       #16213e;
+  --accent:        #e94560;
+  --success:       #2ecc71;
+  --warning:       #f39c12;
+  --danger:        #e74c3c;
 }
 ```
 
 ### Layout chính
-- `<header>`: sticky top, height 56px
+- `<header>`: sticky top, 56px
 - `<main>`: padding-bottom 80px (tránh FAB)
-- `.modal`: fixed, slide-up từ bottom, max-height 90vh, scrollable
-- `.fab`: fixed bottom-right 20px
-
-### Animations
-- Modal slide-up: `transform: translateY(0)` — 0.3s ease
-- Menu slide-in: `transform: translateX(0)` — 0.3s ease
-- Toast: slide-up 0.3s, auto-dismiss sau 3s
-- Card press: `transform: scale(0.98)`
+- `.modal`: fixed, slide-up, max-height 90vh
+- `.fab`: fixed bottom-right
 
 ---
 
 ## sw.js — Service Worker
 
-Cache-first strategy:
+Cache-first strategy. Tăng `CACHE_NAME` version khi deploy update.
 
 ```javascript
-const CACHE_NAME = 'rentmgr-v14';  // Tăng số version khi deploy update
-const ASSETS = [
-  './', './index.html', './css/style.css',
-  './js/db.js', './js/app.js', './manifest.json'
-];
-
-// Install: cache tất cả assets
-// Activate: xóa cache version cũ
-// Fetch: trả về từ cache, fallback network nếu miss
+const CACHE_NAME = 'rentmgr-v26';
+const ASSETS = [/* tất cả JS modules + CSS + HTML */];
 ```
-
-**Lưu ý khi update:** Tăng `CACHE_NAME` (VD: `rentmgr-v15`) để người dùng nhận bản mới.
 
 ---
 
-## Luồng hoạt động tổng thể
+## Luồng hoạt động
 
 ```
 User mở app
     │
     ▼
-index.html load
+index.html → <script type="module" src="js/app.js">
     │
     ▼
-app.js: db.init() → IndexedDB ready
+app.js: db.init() → load settings → setupEventListeners() → renderPage('rooms')
     │
-    ▼
-setupEventListeners()   ← Gắn click handlers cho tất cả buttons/links
-    │
-    ▼
-renderPage('rooms')     ← Hiển thị danh sách phòng mặc định
-    │
-    ├── User click menu item → currentPage = X → renderPage()
-    ├── User click card      → showRoomDetail() / showTenantDetail()
-    ├── User click FAB (+)   → showRoomForm() / showTenantForm()
-    ├── User submit form     → saveRoom() / saveTenant() → renderPage()
-    ├── User click Tính tiền → showBillForm() → tính inline → exportBillImage()
-    └── User search          → searchQuery = X → renderPage()
+    ├── Menu click     → state.currentPage = X → renderPage()
+    ├── Room card      → showRoomDetail() → modal
+    ├── FAB (+)        → showRoomForm() / showTenantForm()
+    ├── Tính tiền      → showBillForm() → chọn tháng → tính → export
+    ├── Tab Điện       → renderElectricPage() → nhập số điện T1-T12
+    └── Search         → state.searchQuery = X → renderPage()
 ```
 
 ---
 
 ## Tips khi đọc code
 
-1. **Tìm feature nào:** Ctrl+F tên function, VD: `showBillForm`, `calculateBill`, `saveRoom`
-2. **Thêm field mới cho Room:** Sửa form HTML trong `showRoomForm()`, xử lý trong `saveRoom()`, hiển thị trong `renderRoomCard()` và `showRoomDetail()`
-3. **Thay đổi màu/style:** Sửa CSS variables trong `:root {}` ở đầu `style.css`
-4. **Debug IndexedDB:** Mở DevTools → Application → IndexedDB → RentMgrDB
-5. **Update cache PWA:** Tăng số trong `CACHE_NAME` ở `sw.js`
+1. **Tìm feature:** Mỗi page nằm trong `js/pages/<tên>.js`
+2. **Tính tiền:** Logic ở `js/billing.js`
+3. **Xuất ảnh:** Logic ở `js/canvas-export.js`
+4. **Thay đổi style:** Sửa CSS variables trong `:root {}`
+5. **Debug DB:** DevTools → Application → IndexedDB → RentMgrDB
+6. **Update cache:** Tăng số trong `CACHE_NAME` ở `sw.js`
+7. **Tránh circular import:** Dùng `state.renderPage()` hoặc dynamic `import()`

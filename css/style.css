@@ -286,18 +286,23 @@ body {
 
 .electric-inputs {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     align-items: flex-end;
 }
 
 .electric-inputs input {
     width: 100%;
-    padding: 8px;
+    padding: 6px;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--bg);
     color: var(--text);
-    font-size: 1rem;
+    font-size: 0.9rem;
+}
+
+.electric-inputs .elec-month {
+    text-align: center;
 }
 
 .electric-inputs label {
