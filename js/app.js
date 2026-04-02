@@ -1,4 +1,4 @@
-const APP_VERSION = 'v26 — 02/04/2026 22:00';
+const APP_VERSION = 'v27 — 02/04/2026 03:12';
 
 import db from './db.js';
 import state from './state.js';
