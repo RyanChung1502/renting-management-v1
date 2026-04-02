@@ -1,6 +1,6 @@
 import db from '../db.js';
 import state from '../state.js';
-import { $, formatCurrency, formatDate, getContractStatus } from '../helpers.js';
+import { $, formatCurrency, formatDate, getContractStatus, getBillMonth } from '../helpers.js';
 import { speak } from '../voice.js';
 import { openModal, closeModal } from '../ui.js';
 import { showBillForm, exportBill, calculateAllBills } from '../billing.js';
@@ -40,7 +40,15 @@ export async function renderRoomList() {
         return;
     }
 
-    mainContent.innerHTML = `<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px;padding:0 4px">
+    const billMonth = getBillMonth();
+    const monthOpts = [];
+    for (let m = 1; m <= 12; m++) {
+        monthOpts.push(`<option value="${m}" ${m === billMonth.month ? 'selected' : ''}>T${m}</option>`);
+    }
+
+    mainContent.innerHTML = `<div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px;padding:0 4px;align-items:center;flex-wrap:wrap">
+        <select id="sel-bill-month" style="padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border);font-size:0.85rem">${monthOpts.join('')}</select>
+        <input type="number" id="sel-bill-year" value="${billMonth.year}" min="2020" max="2099" style="width:70px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border);font-size:0.85rem">
         <button class="btn-bill" id="btn-calc-all" style="flex:none;padding:6px 14px;font-size:0.9rem">T\u00ednh t\u1ea5t c\u1ea3</button>
         <button class="btn-bill btn-export" id="btn-export-all" style="flex:none;padding:6px 14px;font-size:0.9rem">Xu\u1ea5t t\u1ed5ng h\u1ee3p</button>
     </div><div class="room-list">${filtered.map(room => {
@@ -74,7 +82,11 @@ export async function renderRoomList() {
     }).join('')}</div>`;
 
     // Event delegation
-    document.getElementById('btn-calc-all')?.addEventListener('click', () => calculateAllBills());
+    document.getElementById('btn-calc-all')?.addEventListener('click', () => {
+        const m = Number(document.getElementById('sel-bill-month').value);
+        const y = Number(document.getElementById('sel-bill-year').value);
+        calculateAllBills(`${m}/${y}`);
+    });
     document.getElementById('btn-export-all')?.addEventListener('click', () => exportAllBills());
 
     mainContent.querySelectorAll('.room-card').forEach(card => {

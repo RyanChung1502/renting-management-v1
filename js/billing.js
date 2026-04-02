@@ -79,6 +79,8 @@ export async function showBillForm(roomId) {
         const monthKey = `${m}/${y}`;
         const kwhInfo = getKwhForMonth(roomMeters, monthKey);
         const kwh = kwhInfo ? kwhInfo.kwh : 0;
+        const electricOld = kwhInfo ? kwhInfo.previous : null;
+        const electricNew = kwhInfo ? kwhInfo.current : null;
 
         const roomCost = (room.price || 0) * 1000;
         const waterCost = people * waterPrice * 1000;
@@ -87,20 +89,21 @@ export async function showBillForm(roomId) {
 
         room.lastBill = total;
         room.lastBillMonth = monthKey;
-        room.lastBillDetails = { people, kwh, roomCost, waterCost, electricCost, electricPrice, waterPrice };
+        room.lastBillDetails = { people, kwh, electricOld, electricNew, roomCost, waterCost, electricCost, electricPrice, waterPrice };
         await db.saveRoom(room);
 
         const fmt = (n) => Number(n).toLocaleString('vi-VN') + '\u0111';
         $('#bill-room').textContent = fmt(roomCost);
         $('#bill-water').textContent = fmt(waterCost) + ` (${people} ng\u01b0\u1eddi \u00d7 ${fmt(waterPrice * 1000)})`;
-        $('#bill-electric').textContent = fmt(electricCost) + ` (${kwh} kWh \u00d7 ${fmt(electricPrice)})`;
+        const elecDetail = electricOld != null ? `${electricOld} \u2192 ${electricNew} = ${kwh} kWh \u00d7 ${fmt(electricPrice)}` : `${kwh} kWh \u00d7 ${fmt(electricPrice)}`;
+        $('#bill-electric').textContent = fmt(electricCost) + ` (${elecDetail})`;
         $('#bill-total').textContent = fmt(total);
         $('#bill-result').style.display = 'block';
 
         $('#btn-export-bill').onclick = () => exportBillImage({
             roomName: room.name,
             month: monthKey,
-            people, kwh, roomCost, waterCost, electricCost, total,
+            people, kwh, electricOld, electricNew, roomCost, waterCost, electricCost, total,
             electricPriceVal: electricPrice,
             waterPriceVal: waterPrice
         });
@@ -123,19 +126,25 @@ export async function exportBill(roomId) {
     text += `---\n`;
     text += `\ud83c\udfe0 Ti\u1ec1n ph\u00f2ng: ${fmt(d.roomCost || (room.price || 0) * 1000)}\n`;
     if (d.waterCost !== undefined) text += `\ud83d\udca7 Ti\u1ec1n n\u01b0\u1edbc: ${fmt(d.waterCost)} (${d.people} ng\u01b0\u1eddi \u00d7 ${fmt(d.waterPrice * 1000)})\n`;
-    if (d.electricCost !== undefined) text += `\u26a1 Ti\u1ec1n \u0111i\u1ec7n: ${fmt(d.electricCost)} (${d.kwh} kWh \u00d7 ${fmt(d.electricPrice)})\n`;
+    if (d.electricCost !== undefined) {
+        const elecDetail = d.electricOld != null ? `${d.electricOld} \u2192 ${d.electricNew} = ${d.kwh} kWh \u00d7 ${fmt(d.electricPrice)}` : `${d.kwh} kWh \u00d7 ${fmt(d.electricPrice)}`;
+        text += `\u26a1 Ti\u1ec1n \u0111i\u1ec7n: ${fmt(d.electricCost)} (${elecDetail})\n`;
+    }
     text += `---\n`;
     text += `\ud83d\udcb0 T\u1ed5ng c\u1ed9ng: ${fmt(room.lastBill)}`;
 
     shareOrCopy(text, '\u0110\u00e3 sao ch\u00e9p h\u00f3a \u0111\u01a1n');
 }
 
-export async function calculateAllBills() {
+export async function calculateAllBills(monthKey) {
     const rooms = await db.getAllRooms();
     const electricPrice = await db.getSetting('electricPrice') || 0;
     const waterPrice = await db.getSetting('waterPrice') || 0;
-    const billMonth = getBillMonth();
-    const currentMonth = `${billMonth.month}/${billMonth.year}`;
+    if (!monthKey) {
+        const billMonth = getBillMonth();
+        monthKey = `${billMonth.month}/${billMonth.year}`;
+    }
+    const currentMonth = monthKey;
 
     let count = 0;
     for (const room of rooms) {
@@ -145,6 +154,8 @@ export async function calculateAllBills() {
         const roomMeters = await db.getMetersByRoom(room.id);
         const kwhInfo = getKwhForMonth(roomMeters, currentMonth);
         const kwh = kwhInfo ? kwhInfo.kwh : 0;
+        const electricOld = kwhInfo ? kwhInfo.previous : null;
+        const electricNew = kwhInfo ? kwhInfo.current : null;
 
         const roomCost = (room.price || 0) * 1000;
         const waterCost = people * waterPrice * 1000;
@@ -153,7 +164,7 @@ export async function calculateAllBills() {
 
         room.lastBill = total;
         room.lastBillMonth = currentMonth;
-        room.lastBillDetails = { people, kwh, roomCost, waterCost, electricCost, electricPrice, waterPrice };
+        room.lastBillDetails = { people, kwh, electricOld, electricNew, roomCost, waterCost, electricCost, electricPrice, waterPrice };
         await db.saveRoom(room);
         count++;
     }

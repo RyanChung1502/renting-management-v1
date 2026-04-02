@@ -8,7 +8,7 @@ export function downloadCanvasPng(canvas, filename) {
     link.click();
 }
 
-export function exportBillImage({ roomName, month, people, kwh, roomCost, waterCost, electricCost, total, electricPriceVal, waterPriceVal }) {
+export function exportBillImage({ roomName, month, people, kwh, electricOld, electricNew, roomCost, waterCost, electricCost, total, electricPriceVal, waterPriceVal }) {
     const fmt = (n) => Number(n).toLocaleString('vi-VN') + '\u0111';
     const canvas = document.createElement('canvas');
     canvas.width = 800;
@@ -34,7 +34,7 @@ export function exportBillImage({ roomName, month, people, kwh, roomCost, waterC
     const rows = [
         ['Ti\u1ec1n ph\u00f2ng', fmt(roomCost)],
         [`Ti\u1ec1n n\u01b0\u1edbc (${people} ng\u01b0\u1eddi \u00d7 ${fmt(waterPriceVal * 1000)})`, fmt(waterCost)],
-        [`Ti\u1ec1n \u0111i\u1ec7n (${kwh} kWh \u00d7 ${fmt(electricPriceVal)})`, fmt(electricCost)],
+        [`Ti\u1ec1n \u0111i\u1ec7n (${electricOld != null ? `${electricOld} \u2192 ${electricNew} = ` : ''}${kwh} kWh \u00d7 ${fmt(electricPriceVal)})`, fmt(electricCost)],
     ];
     let y = 165;
     rows.forEach(([label, value]) => {
