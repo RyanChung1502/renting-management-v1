@@ -1,3 +1,5 @@
+const APP_VERSION = 'v26 — 02/04/2026 22:00';
+
 import db from './db.js';
 import state from './state.js';
 import { $, showToast } from './helpers.js';
@@ -145,4 +147,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     speechSynthesis.getVoices();
     setupEventListeners();
     renderPage();
+    const verEl = document.getElementById('app-version');
+    if (verEl) verEl.textContent = APP_VERSION;
 });

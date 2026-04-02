@@ -57,7 +57,7 @@ export async function renderElectricPage() {
                             const val = m && m.value != null && m.value !== '' ? m.value : '';
                             const monthNum = mk.split('/')[0];
                             return `
-                            <div class="form-group" style="flex:1 1 calc(25% - 6px);min-width:70px;margin:0">
+                            <div class="form-group" style="flex:0 0 calc(33.33% - 6px);margin:0">
                                 <label>T${monthNum}</label>
                                 <input type="number" class="elec-month" data-room="${room.id}" data-month="${mk}" value="${val}" placeholder="\u2014">
                             </div>`;
